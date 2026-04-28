@@ -264,8 +264,13 @@ const TEAM_HISTORY = DEDUPLICATED.map(([team, conference, start, end, wins, loss
   weeklyRecord: rec(wins, losses),
 }));
 
-// ── Schedules for top contenders ───────────────────────────────────────────
-const SCHEDULES = {
+// ── Schedules ─────────────────────────────────────────────────────────────
+// HAND_CURATED is our hand-written set for the marquee teams (richer narrative,
+// known-correct AdjEM values). GENERATED_SCHEDULES is auto-pulled from KenPom
+// for every D-I team. We spread generated first so HAND_CURATED wins on overlap.
+import { GENERATED_SCHEDULES } from "./generated/season2018.schedules";
+
+const HAND_CURATED = {
   "Villanova": [
     { week:1,  opponent:"Columbia",            opponentAdjEM:6.0,  result:"W", score:"83-62",  location:"H" },
     { week:1,  opponent:"Nicholls St.",        opponentAdjEM:8.5,  result:"W", score:"112-58", location:"H" },
@@ -578,6 +583,10 @@ const SCHEDULES = {
     { week:19, opponent:"Florida St.",         opponentAdjEM:19.0, result:"L", score:"66-75",  location:"N" },
   ],
 };
+
+// Final SCHEDULES: generated entries for every D-I team, with hand-curated
+// overrides taking precedence for the marquee teams above.
+const SCHEDULES = { ...GENERATED_SCHEDULES, ...HAND_CURATED };
 
 // ── Dividend events ────────────────────────────────────────────────────────
 const DIVIDEND_EVENTS = [

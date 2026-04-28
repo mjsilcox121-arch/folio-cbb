@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build output
+dist/
+**/dist/
+build/
+**/build/
+
+# Vite caches
+.vite/
+**/.vite/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# Environment files (anything with secrets)
+.env
+.env.*
+!.env.example
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Python — local KenPom fetcher contains credentials, do not publish
+fetch_kenpom.py
+__pycache__/
+*.pyc
+*.pyo
+
+# Cowork-internal sessions, never commit
+.claude/

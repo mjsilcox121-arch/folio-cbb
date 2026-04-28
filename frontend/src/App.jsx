@@ -129,10 +129,18 @@ function LineChart({ data, labels, color = "#1D9E75", height = 120, currentIdx =
     else setHovIdx(null);
   }, [data.length, iw]);
 
-  const tooltip = hovIdx != null && tooltipRows?.[hovIdx];
-  const tooltipLines = tooltip ? (Array.isArray(tooltip) ? tooltip : [tooltip]) : null;
+  // Always show a tooltip on hover. If no schedule data was passed for this
+  // week, fall back to just the value of the hovered point so the chart is
+  // still informative.
+  const rawTip = hovIdx != null ? tooltipRows?.[hovIdx] : null;
+  let tooltipLines = null;
+  if (hovIdx != null) {
+    if (Array.isArray(rawTip) && rawTip.length > 0) tooltipLines = rawTip;
+    else if (typeof rawTip === "string" && rawTip) tooltipLines = [rawTip];
+    else tooltipLines = [`Value: ${data[hovIdx].toFixed(2)}`];
+  }
   const txRaw = hovIdx != null ? px(hovIdx) : 0;
-  const tooltipW = 160;
+  const tooltipW = 170;
   const tx = Math.min(Math.max(txRaw - tooltipW / 2, pad.left), W - tooltipW - 4);
   const tyBase = hovIdx != null ? py(data[hovIdx]) : 0;
   const tooltipH = tooltipLines ? 18 + tooltipLines.length * 16 : 0;
@@ -368,6 +376,33 @@ function SettingsModal({
   );
 }
 
+// ── Buy/Sell controls inside the team modal ───────────────────────────────
+function ModalActions({ teamDetail, week, selectedTeam, portfolio, buyingPower, buyShare, sellShare }) {
+  const adjEM       = teamDetail.weeklyAdjEM[week];
+  const totalShares = calcShares(adjEM);
+  const ownedNow    = portfolio[selectedTeam] || 0;
+  const atMax       = ownedNow >= totalShares;
+  const priceNow    = Math.round(sharePrice(adjEM) * 100) / 100;
+  const cantAfford  = buyingPower < priceNow - 0.001;
+  const buyDisabled = atMax || cantAfford;
+  const buyLabel    = atMax ? `All ${totalShares} shares owned` : `Buy — $${priceNow.toFixed(2)}`;
+  return (
+    <div className="modal-actions">
+      <button
+        className="buy-btn large"
+        onClick={() => buyShare(selectedTeam)}
+        disabled={buyDisabled}
+        title={atMax ? `All ${totalShares} shares owned` : undefined}
+      >
+        {buyLabel}
+      </button>
+      <button className="sell-btn large" onClick={() => sellShare(selectedTeam)} disabled={!ownedNow}>
+        Sell share
+      </button>
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
   // ── Settings (persist across sessions via localStorage) ──────────────────
@@ -403,8 +438,12 @@ export default function App() {
     const adjEM     = t.weeklyAdjEM[week];
     const prevAdjEM = week > 0 ? t.weeklyAdjEM[week - 1] : null;
     const shares    = calcShares(adjEM);
-    const price     = adjEM / shares;
-    const prevPrice = prevAdjEM != null ? prevAdjEM / calcShares(prevAdjEM) : null;
+    // Round price to 2 decimals so display/payment/holdings all use the same
+    // value (avoids -0.01 drift after many trades).
+    const price     = Math.round((adjEM / shares) * 100) / 100;
+    const prevPrice = prevAdjEM != null
+      ? Math.round((prevAdjEM / calcShares(prevAdjEM)) * 100) / 100
+      : null;
     return {
       ...t, adjEM, prevAdjEM, shares, price, prevPrice,
       adjEMDelta:  prevAdjEM != null ? Math.round((adjEM - prevAdjEM) * 100) / 100 : null,
@@ -477,6 +516,9 @@ export default function App() {
   function buyShare(teamName) {
     const team = teamsThisWeek.find((t) => t.team === teamName);
     if (!team || buyingPower < team.price - 0.001) return;
+    // Cap holdings at the team's total share count.
+    const owned = portfolio[teamName] || 0;
+    if (owned >= team.shares) return;
     let remaining = team.price, newDivBank = dividendBank, newCash = cash;
     if (newDivBank >= remaining) { newDivBank = Math.round((newDivBank - remaining) * 100) / 100; remaining = 0; }
     else { remaining = Math.round((remaining - newDivBank) * 100) / 100; newDivBank = 0; newCash = Math.round((newCash - remaining) * 100) / 100; }
@@ -550,6 +592,7 @@ export default function App() {
     const dataUpToNow    = t.weeklyAdjEM.slice(0, week + 1);
     const priceHistory   = dataUpToNow.map((e) => Math.round((e / calcShares(e)) * 100) / 100);
     const allGames       = SCHEDULES[selectedTeam] || [];
+    const hasSchedule    = allGames.length > 0;
     const pastGames      = allGames.filter((g) => g.week <= week);
     const futureGames    = allGames.filter((g) => g.week > week);
     const last5          = pastGames.slice(-5);
@@ -569,7 +612,7 @@ export default function App() {
     // Past dividends only (no future)
     const earnedDivs = dividendLog.filter((d) => d.team === selectedTeam);
 
-    return { ...t, dataUpToNow, priceHistory, last5, next5, tooltipRows, earnedDivs };
+    return { ...t, dataUpToNow, priceHistory, last5, next5, tooltipRows, earnedDivs, hasSchedule };
   }, [selectedTeam, week, dividendLog]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -666,7 +709,8 @@ export default function App() {
               <tbody>
                 {filteredTeams.map((t) => {
                   const owned  = portfolio[t.team] || 0;
-                  const canBuy = buyingPower >= t.price - 0.001;
+                  const atMax  = owned >= t.shares;
+                  const canBuy = !atMax && buyingPower >= t.price - 0.001;
                   const pct    = ((t.adjEM / maxAdjEM) * 100).toFixed(1);
                   return (
                     <tr key={t.team} className={owned > 0 ? "owned-row" : ""}>
@@ -688,10 +732,15 @@ export default function App() {
                       </td>
                       <td className="price-cell">${t.price.toFixed(2)}</td>
                       <td>{week > 0 ? <Delta value={t.priceDelta} /> : <span className="delta neutral">—</span>}</td>
-                      <td>{owned > 0 ? <span className="owned-badge">{owned}</span> : <span className="owned-zero">—</span>}</td>
+                      <td>{owned > 0 ? <span className="owned-badge">{owned}{atMax && "/" + t.shares}</span> : <span className="owned-zero">—</span>}</td>
                       <td>
                         <div className="action-btns">
-                          <button className="buy-btn"  onClick={() => buyShare(t.team)}  disabled={!canBuy}>Buy</button>
+                          <button
+                            className="buy-btn"
+                            onClick={() => buyShare(t.team)}
+                            disabled={!canBuy}
+                            title={atMax ? `All ${t.shares} shares owned` : undefined}
+                          >Buy</button>
                           <button className="sell-btn" onClick={() => sellShare(t.team)} disabled={owned === 0}>Sell</button>
                         </div>
                       </td>
@@ -753,7 +802,7 @@ export default function App() {
                       <td>{week > 0 ? <Delta value={row.valueDelta} /> : <span className="delta neutral">—</span>}</td>
                       <td>{row.weekDiv > 0 ? <span className="div-earned">+${row.weekDiv.toFixed(2)}</span> : <span className="owned-zero">—</span>}</td>
                       <td>{row.totalDivs > 0 ? <span className="div-earned">${row.totalDivs.toFixed(2)}</span> : <span className="owned-zero">—</span>}</td>
-                      <td><div className="action-btns"><button className="buy-btn" onClick={() => buyShare(row.teamName)} disabled={buyingPower < row.price - 0.001}>Buy</button><button className="sell-btn" onClick={() => sellShare(row.teamName)}>Sell</button></div></td>
+                      <td><div className="action-btns"><button className="buy-btn" onClick={() => buyShare(row.teamName)} disabled={buyingPower < row.price - 0.001 || row.owned >= (teamsThisWeek.find((t) => t.team === row.teamName)?.shares ?? Infinity)}>Buy</button><button className="sell-btn" onClick={() => sellShare(row.teamName)}>Sell</button></div></td>
                     </tr>
                   ))}
                 </tbody>
@@ -859,20 +908,25 @@ export default function App() {
             <div className="schedule-panels">
               <div className="schedule-panel">
                 <div className="schedule-panel-title">Last 5 results</div>
-                {teamDetail.last5.length === 0
-                  ? <div className="schedule-empty">No games played yet.</div>
-                  : teamDetail.last5.map((g, i) => <GameRow key={i} game={g} showAdjEM={false} />)
+                {!teamDetail.hasSchedule
+                  ? <div className="schedule-empty">Detailed schedule not available for this team.</div>
+                  : teamDetail.last5.length === 0
+                    ? <div className="schedule-empty">No games played yet this season.</div>
+                    : teamDetail.last5.map((g, i) => <GameRow key={i} game={g} showAdjEM={false} />)
                 }
               </div>
 
               <div className="schedule-panel">
                 <div className="schedule-panel-title">Next 5 games <span className="schedule-panel-sub">opponent AdjEM shown</span></div>
-                {teamDetail.next5.length === 0
-                  ? <div className="schedule-empty">No upcoming games scheduled.</div>
-                  : teamDetail.next5.map((g, i) => <UpcomingGameRow key={i} game={g} weeks={WEEKS} />)
+                {!teamDetail.hasSchedule
+                  ? <div className="schedule-empty">Detailed schedule not available for this team.</div>
+                  : teamDetail.next5.length === 0
+                    ? <div className="schedule-empty">No upcoming games scheduled.</div>
+                    : teamDetail.next5.map((g, i) => <UpcomingGameRow key={i} game={g} weeks={WEEKS} />)
                 }
               </div>
             </div>
+
 
             {teamDetail.earnedDivs.length > 0 && (
               <>
@@ -889,12 +943,15 @@ export default function App() {
               </>
             )}
 
-            <div className="modal-actions">
-              <button className="buy-btn large" onClick={() => buyShare(selectedTeam)} disabled={buyingPower < sharePrice(teamDetail.weeklyAdjEM[week]) - 0.001}>
-                Buy — ${sharePrice(teamDetail.weeklyAdjEM[week]).toFixed(2)}
-              </button>
-              <button className="sell-btn large" onClick={() => sellShare(selectedTeam)} disabled={!portfolio[selectedTeam]}>Sell share</button>
-            </div>
+            <ModalActions
+              teamDetail={teamDetail}
+              week={week}
+              selectedTeam={selectedTeam}
+              portfolio={portfolio}
+              buyingPower={buyingPower}
+              buyShare={buyShare}
+              sellShare={sellShare}
+            />
           </div>
         </div>
       )}

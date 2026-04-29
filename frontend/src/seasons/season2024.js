@@ -4,7 +4,11 @@
 
 import { WEEKS, TEAM_HISTORY } from "../weeklyData";
 import { DIVIDEND_EVENTS, EVENTS_BY_WEEK } from "../dividends";
-import { SCHEDULES } from "../schedules";
+import { SCHEDULES as HAND_CURATED } from "../schedules";
+import { GENERATED_SCHEDULES } from "./generated/season2024.schedules";
+
+// Generated entries cover every D-I team; hand-curated overrides win on overlap.
+const SCHEDULES = { ...GENERATED_SCHEDULES, ...HAND_CURATED };
 
 export const SEASON_2024 = {
   id: "2023-24",

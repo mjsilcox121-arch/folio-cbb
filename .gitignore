@@ -28,8 +28,9 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Python — local KenPom fetcher contains credentials, do not publish
+# Python — local KenPom fetchers may contain credentials, do not publish
 fetch_kenpom.py
+fetch_schedules.py
 __pycache__/
 *.pyc
 *.pyo

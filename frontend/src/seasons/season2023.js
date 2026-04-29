@@ -400,10 +400,12 @@ const TEAM_HISTORY = DEDUPLICATED.map(([team, conference, start, end, wins, loss
   weeklyRecord: rec(wins, losses),
 }));
 
-// ── Schedules for top contenders (8 teams) ─────────────────────────────────
-// Showing representative games. Other teams have no schedule data
-// (the team modal handles missing schedules gracefully).
-const SCHEDULES = {
+// ── Schedules ─────────────────────────────────────────────────────────────
+// HAND_CURATED is our hand-written set for top contenders. GENERATED_SCHEDULES
+// is auto-pulled from KenPom for every D-I team. Hand-curated overrides win.
+import { GENERATED_SCHEDULES } from "./generated/season2023.schedules";
+
+const HAND_CURATED = {
   "UConn": [
     { week:1,  opponent:"Stonehill",          opponentAdjEM:1.0,  result:"W", score:"95-60",  location:"H" },
     { week:1,  opponent:"Boston U.",          opponentAdjEM:10.5, result:"W", score:"81-57",  location:"H" },
@@ -701,6 +703,8 @@ const SCHEDULES = {
     { week:20, opponent:"San Diego St.",      opponentAdjEM:22.0, result:"L", score:"71-72",  location:"N" },
   ],
 };
+
+const SCHEDULES = { ...GENERATED_SCHEDULES, ...HAND_CURATED };
 
 // ── Dividend events ────────────────────────────────────────────────────────
 const DIVIDEND_EVENTS = [

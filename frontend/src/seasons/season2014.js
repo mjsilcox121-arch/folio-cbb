@@ -263,8 +263,12 @@ const TEAM_HISTORY = DEDUPLICATED.map(([team, conference, start, end, wins, loss
   weeklyRecord: rec(wins, losses),
 }));
 
-// ── Schedules for top contenders ───────────────────────────────────────────
-const SCHEDULES = {
+// ── Schedules ─────────────────────────────────────────────────────────────
+// HAND_CURATED is our hand-written set for top contenders. GENERATED_SCHEDULES
+// is auto-pulled from KenPom for every D-I team. Hand-curated overrides win.
+import { GENERATED_SCHEDULES } from "./generated/season2014.schedules";
+
+const HAND_CURATED = {
   "UConn": [
     { week:1,  opponent:"Maryland",            opponentAdjEM:13.0, result:"W", score:"78-77",  location:"H" },
     { week:1,  opponent:"Yale",                opponentAdjEM:10.0, result:"W", score:"77-65",  location:"H" },
@@ -599,6 +603,8 @@ const SCHEDULES = {
     { week:19, opponent:"Wisconsin",           opponentAdjEM:25.5, result:"L", score:"63-64",  location:"N" },
   ],
 };
+
+const SCHEDULES = { ...GENERATED_SCHEDULES, ...HAND_CURATED };
 
 // ── Dividend events ────────────────────────────────────────────────────────
 const DIVIDEND_EVENTS = [

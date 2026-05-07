@@ -39,9 +39,9 @@ export default function SettingsModal({
 
         {/* Season */}
         <div className="settings-section">
-          <label className="settings-label">Season</label>
+          <label className="settings-label" htmlFor="settings-season">Season</label>
           <p className="settings-help">Switching seasons resets your game.</p>
-          <select className="settings-select" value={seasonId} onChange={(e) => onChangeSeason(e.target.value)}>
+          <select id="settings-season" className="settings-select" value={seasonId} onChange={(e) => onChangeSeason(e.target.value)}>
             {SEASONS.map((s) => (
               <option key={s.id} value={s.id}>{s.label} — Champion: {s.champion}</option>
             ))}
@@ -99,6 +99,7 @@ export default function SettingsModal({
                       <td className="rule-default">${r.value}</td>
                       <td>
                         <input
+                          id={`rule-${r.key}`} name={`rule-${r.key}`}
                           type="number" min="0" step="1" className="rule-input" value={cur}
                           onChange={(e) => {
                             const n = Number(e.target.value);

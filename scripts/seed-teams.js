@@ -61,8 +61,13 @@ async function main() {
     process.exit(0);
   }
 
-  // 2. Attach season label
-  const rows = teams.map((t) => ({ ...t, season: SEASON_LABEL }));
+  // 2. Attach season label and normalize column names to match DB schema.
+  // The Torvik provider returns `last_updated` but the teams table uses `updated_at`.
+  const rows = teams.map(({ last_updated, ...t }) => ({
+    ...t,
+    season: SEASON_LABEL,
+    updated_at: last_updated,
+  }));
 
   // 3. Preview
   console.log("Sample (first 5 teams):");

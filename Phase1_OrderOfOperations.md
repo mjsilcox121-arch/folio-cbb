@@ -13,7 +13,7 @@
 - [x] Confirm backend platform: **Supabase** (create a free project at supabase.com)
 - [x] Confirm frontend host: **Vercel** (will replace GitHub Pages)
 - [x] Confirm data sources (see Reference table below): **Bart Torvik** for efficiency ratings, **Sports Reference** for schedules and game results, **ESPN unofficial API** as a secondary/fallback
-- [ ] Create a new Git branch: `phase1-multi-user`
+- [x] Create a new Git branch: `phase1-multi-user`
 - [x] Install Supabase JS client in the frontend: `npm install @supabase/supabase-js`
 - [x] Add React Router: `npm install react-router-dom`
 - [x] Create a `src/lib/supabase.js` file with the Supabase client initialized (use env vars for the URL and anon key)
@@ -56,7 +56,7 @@
   - [x] Users can only see queue_requests for their own portfolio
   - [x] Users can see execution_log for their market
   - [x] Users can only see market_members for their own market
-- [ ] Seed team data using the **Torvik adapter** (not the existing KenPom-derived static JS files) — pull current T-Rank ratings for all D-I teams and write to `teams`
+- [x] Seed team data using the **Torvik adapter** (not the existing KenPom-derived static JS files) — pull current T-Rank ratings for all D-I teams and write to `teams`
 
 ### Day 4 — Frontend Restructure
 *Break up App.jsx before adding any new features. This is necessary, not optional.*
@@ -79,23 +79,23 @@
 - [x] Confirm the app still works locally after the refactor before moving on
 
 ### Day 5 — Authentication
-- [ ] Enable Supabase Auth (email/password) in the Supabase dashboard
-- [ ] Build a `/login` page with email + password form
-- [ ] Build a `/signup` page (or combine with login)
-- [ ] Add auth state to a React context (`AuthContext`) so all components can access the current user
-- [ ] Protect all routes — redirect to `/login` if not authenticated
-- [ ] Add a logout button
-- [ ] On first sign-up, write a row to the `users` table with `is_admin = false` (set your account to `is_admin = true` manually in Supabase)
+- [x] Enable Supabase Auth (email/password) in the Supabase dashboard
+- [x] Build a `/login` page with email + password form
+- [x] Build a `/signup` page (or combine with login)
+- [x] Add auth state to a React context (`AuthContext`) so all components can access the current user
+- [x] Protect all routes — redirect to `/login` if not authenticated
+- [x] Add a logout button
+- [x] On first sign-up, write a row to the `users` table with `is_admin = false` (set your account to `is_admin = true` manually in Supabase)
 - [ ] Test: sign up, log in, log out, protected route redirect
 
 ### 🧪 Manual Test Checkpoint — After Day 5
 *Run before starting Day 6. Auth gates everything — if this is broken, nothing downstream works.*
-- [ ] Sign up a new account — confirm a row appears in the `users` table with `is_admin = false`
-- [ ] Log in — confirm you land on `/market`
-- [ ] Log out — confirm you're redirected to `/login`
-- [ ] Visit `/market` without being logged in — confirm redirect to `/login`
-- [ ] Visit `/portfolio`, `/log`, `/draft` without being logged in — all should redirect to `/login`
-- [ ] Confirm your own account has `is_admin = true` set in Supabase
+- [x] Sign up a new account — confirm a row appears in the `users` table with `is_admin = false`
+- [x] Log in — confirm you land on `/market`
+- [x] Log out — confirm you're redirected to `/login`
+- [x] Visit `/market` without being logged in — confirm redirect to `/login`
+- [x] Visit `/portfolio`, `/log`, `/draft` without being logged in — all should redirect to `/login`
+- [x] Confirm your own account has `is_admin = true` set in Supabase
 
 ### Day 6 — Hosting Migration
 - [ ] Deploy the frontend to **Vercel** (connect your GitHub repo, set build command `npm run build`, output directory `frontend/dist`)

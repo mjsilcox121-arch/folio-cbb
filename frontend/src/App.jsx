@@ -8,6 +8,8 @@ import {
   ruleKeyForEventLabel,
 } from "./seasons";
 import { calcShares, sharePrice, teamColor } from "./lib/gameUtils";
+import { useAuth } from "./context/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
 import MarketTable from "./components/MarketTable";
 import PortfolioView from "./components/PortfolioView";
 import TeamModal from "./components/TeamModal";
@@ -29,6 +31,7 @@ function buildDefaultOverrides() {
 // State lives here so it survives navigation between /market and /portfolio.
 function GameLayout() {
   const navigate = useNavigate();
+  const { user, signOut } = useAuth();
 
   // Settings
   const [seasonId, setSeasonId]                     = useState(DEFAULT_SEASON_ID);
@@ -36,6 +39,7 @@ function GameLayout() {
   const [dividendMultiplier, setDividendMultiplier] = useState(DEFAULT_MULTIPLIER);
   const [dividendOverrides, setDividendOverrides]   = useState(buildDefaultOverrides);
   const [showSettings, setShowSettings]             = useState(false);
+  const [logoutError, setLogoutError]               = useState("");
 
   const season = useMemo(() => getSeason(seasonId), [seasonId]);
   const { WEEKS, TEAM_HISTORY, SCHEDULES, EVENTS_BY_WEEK, label: seasonLabel } = season;
@@ -238,6 +242,17 @@ function GameLayout() {
     setTradeLog([]); setDividendLog([]); setSelectedTeam(null); setPortfolioHistory([budget]);
   }
 
+  async function handleLogout() {
+    setLogoutError("");
+    try {
+      await signOut();
+      navigate("/login", { replace: true });
+    } catch (err) {
+      console.error("Logout failed:", err.message);
+      setLogoutError("Sign out failed — please try again.");
+    }
+  }
+
   // ── Shared top bar + week controls ────────────────────────────────────────
   return (
     <div className="container">
@@ -256,8 +271,21 @@ function GameLayout() {
           <button className="tab-btn" onClick={() => navigate("/draft")}>Draft</button>
           <button className="tab-btn" onClick={() => navigate("/admin")}>Admin</button>
           <button className="gear-btn" onClick={() => setShowSettings(true)} title="Settings" aria-label="Open settings">⚙</button>
+          <button
+            className="tab-btn signout-btn"
+            onClick={handleLogout}
+            title={`Sign out (${user?.email})`}
+          >
+            Sign out
+          </button>
         </div>
       </div>
+
+      {logoutError && (
+        <div style={{ background: "#2e1a1a", border: "1px solid #4a2a2a", color: "#cf6f6f", borderRadius: "6px", padding: "0.5rem 0.85rem", fontSize: "0.85rem", marginBottom: "1rem" }}>
+          {logoutError}
+        </div>
+      )}
 
       <div className="stat-bar">
         <div className="stat">
@@ -382,16 +410,28 @@ function GameLayout() {
 }
 
 // ── Root router ───────────────────────────────────────────────────────────────
+// All game routes are wrapped in ProtectedRoute — unauthenticated users are
+// redirected to /login. The root / redirect is handled by AuthRedirect so it
+// can inspect auth state before choosing the destination.
+function AuthRedirect() {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  return <Navigate to={user ? "/market" : "/login"} replace />;
+}
+
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/market" replace />} />
+      <Route path="/" element={<AuthRedirect />} />
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/log" element={<LogPage />} />
-      <Route path="/draft" element={<DraftPage />} />
-      <Route path="/admin" element={<AdminPage />} />
-      {/* Market and portfolio share GameLayout (shared state + topbar) */}
-      <Route path="/*" element={<GameLayout />} />
+
+      {/* Protected game routes */}
+      <Route path="/log"   element={<ProtectedRoute><LogPage /></ProtectedRoute>} />
+      <Route path="/draft" element={<ProtectedRoute><DraftPage /></ProtectedRoute>} />
+      <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+
+      {/* Market + portfolio share GameLayout (shared state + topbar) */}
+      <Route path="/*" element={<ProtectedRoute><GameLayout /></ProtectedRoute>} />
     </Routes>
   );
 }

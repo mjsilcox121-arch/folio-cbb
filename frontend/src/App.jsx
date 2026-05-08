@@ -9,6 +9,7 @@ import {
 } from "./seasons";
 import { calcShares, sharePrice, teamColor } from "./lib/gameUtils";
 import { useAuth } from "./context/AuthContext";
+import { useMarket } from "./context/MarketContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import MarketTable from "./components/MarketTable";
 import PortfolioView from "./components/PortfolioView";
@@ -18,6 +19,7 @@ import LoginPage from "./pages/LoginPage";
 import LogPage from "./pages/LogPage";
 import DraftPage from "./pages/DraftPage";
 import AdminPage from "./pages/AdminPage";
+import JoinPage from "./pages/JoinPage";
 import "./App.css";
 
 const DEFAULT_BUDGET     = 100;
@@ -32,6 +34,7 @@ function buildDefaultOverrides() {
 function GameLayout() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { market, markets, setActiveMarketId } = useMarket();
 
   // Settings
   const [seasonId, setSeasonId]                     = useState(DEFAULT_SEASON_ID);
@@ -311,6 +314,41 @@ function GameLayout() {
         </div>
       </div>
 
+      {/* Market membership display */}
+      {markets.length > 0 && (
+        <div style={{ marginBottom: "1rem", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12, color: "#888", fontFamily: "Arial, sans-serif", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.4px" }}>
+            Market:
+          </span>
+          {markets.length === 1 ? (
+            <span style={{ fontSize: 13, fontFamily: "Arial, sans-serif", fontWeight: 600, color: "#0d1b2a" }}>
+              {market?.name ?? "—"}
+              {market?.status && (
+                <span style={{
+                  marginLeft: 8, fontSize: 11, fontWeight: 600, fontFamily: "Arial, sans-serif",
+                  padding: "1px 8px", borderRadius: 20,
+                  background: market.status === "active" ? "#EAF3DE" : market.status === "draft" ? "#FAEEDA" : market.status === "complete" ? "#E8F1FA" : "#f0ece4",
+                  border: `1px solid ${market.status === "active" ? "#C0DD97" : market.status === "draft" ? "#FAC775" : market.status === "complete" ? "#A8C8F0" : "#d8d0c4"}`,
+                  color: market.status === "active" ? "#3B6D11" : market.status === "draft" ? "#854F0B" : market.status === "complete" ? "#185FA5" : "#666",
+                }}>
+                  {market.status.charAt(0).toUpperCase() + market.status.slice(1)}
+                </span>
+              )}
+            </span>
+          ) : (
+            <select
+              value={market?.id ?? ""}
+              onChange={(e) => setActiveMarketId(e.target.value)}
+              style={{ fontSize: 13, padding: "3px 8px", borderRadius: 6, border: "1px solid #ddd", fontFamily: "Arial, sans-serif", color: "#0d1b2a", background: "#fff", cursor: "pointer" }}
+            >
+              {markets.map((m) => (
+                <option key={m.id} value={m.id}>{m.name} ({m.status})</option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
       <div className="week-controls">
         <div className="week-track">
           {WEEKS.map((w, i) => (
@@ -424,6 +462,9 @@ export default function App() {
     <Routes>
       <Route path="/" element={<AuthRedirect />} />
       <Route path="/login" element={<LoginPage />} />
+
+      {/* Invite link — requires auth; JoinPage handles the redirect-to-login flow */}
+      <Route path="/join/:token" element={<ProtectedRoute><JoinPage /></ProtectedRoute>} />
 
       {/* Protected game routes */}
       <Route path="/log"   element={<ProtectedRoute><LogPage /></ProtectedRoute>} />

@@ -43,89 +43,90 @@ UPDATE markets SET status = 'waiting' WHERE status IS NULL;
 -- RLS Policies
 -- ============================================================
 
--- 5. Allow any authenticated user to read a market by invite_token
+-- 5. Security definer function to check admin status without triggering RLS recursion.
+--    All admin policies below use this function instead of inline EXISTS subqueries,
+--    which would cause infinite recursion on the users table.
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = true
+  );
+$$;
+
+-- 6. Allow any authenticated user to read a market by invite_token
 --    (used by the /join/:token page to look up the market before joining)
 DROP POLICY IF EXISTS "Anyone can read market by invite_token" ON markets;
 CREATE POLICY "Anyone can read market by invite_token"
   ON markets FOR SELECT
   USING (auth.role() = 'authenticated');
 
--- 6. Only the admin (is_admin = true) can insert or update markets
+-- 7. Only the admin can insert or update markets
 DROP POLICY IF EXISTS "Admin can insert markets" ON markets;
 CREATE POLICY "Admin can insert markets"
   ON markets FOR INSERT
-  WITH CHECK (
-    EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = true)
-  );
+  WITH CHECK (public.is_admin());
 
 DROP POLICY IF EXISTS "Admin can update markets" ON markets;
 CREATE POLICY "Admin can update markets"
   ON markets FOR UPDATE
-  USING (
-    EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = true)
-  );
+  USING (public.is_admin());
 
--- 7. market_members insert: authenticated users can join a market they have been invited to
---    (client enforces invite_token check; RLS allows any auth user to insert their own row)
+-- 8. market_members insert: authenticated users can join a market they have been invited to
 DROP POLICY IF EXISTS "Users can join a market" ON market_members;
 CREATE POLICY "Users can join a market"
   ON market_members FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
--- 8. market_members select: users see only their own memberships
+-- 9. market_members select: users see only their own memberships
 DROP POLICY IF EXISTS "Users see own market memberships" ON market_members;
 CREATE POLICY "Users see own market memberships"
   ON market_members FOR SELECT
   USING (auth.uid() = user_id);
 
--- Admin can see all memberships
 DROP POLICY IF EXISTS "Admin can read all market_members" ON market_members;
 CREATE POLICY "Admin can read all market_members"
   ON market_members FOR SELECT
-  USING (
-    EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = true)
-  );
+  USING (public.is_admin());
 
--- Admin can insert market_members (for add-by-email flow)
 DROP POLICY IF EXISTS "Admin can insert market_members" ON market_members;
 CREATE POLICY "Admin can insert market_members"
   ON market_members FOR INSERT
-  WITH CHECK (
-    EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = true)
-  );
+  WITH CHECK (public.is_admin());
 
--- Admin can delete market_members (remove user from market)
 DROP POLICY IF EXISTS "Admin can delete market_members" ON market_members;
 CREATE POLICY "Admin can delete market_members"
   ON market_members FOR DELETE
-  USING (
-    EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = true)
-  );
+  USING (public.is_admin());
 
--- 9. portfolios: users can insert their own row (for join flow)
+-- 10. portfolios: users can insert their own row (for join flow)
 DROP POLICY IF EXISTS "Users can create own portfolio" ON portfolios;
 CREATE POLICY "Users can create own portfolio"
   ON portfolios FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
--- Admin can also read all portfolios (for leaderboard / admin view)
 DROP POLICY IF EXISTS "Admin can read all portfolios" ON portfolios;
 CREATE POLICY "Admin can read all portfolios"
   ON portfolios FOR SELECT
-  USING (
-    EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = true)
-  );
+  USING (public.is_admin());
 
--- 10. Allow admin to read all users (needed for add-by-email lookup)
+-- 11. Users can read their own profile; admin can read all users
+DROP POLICY IF EXISTS "Users can read own profile" ON users;
+CREATE POLICY "Users can read own profile"
+  ON users FOR SELECT
+  USING (auth.uid() = id);
+
 DROP POLICY IF EXISTS "Admin can read all users" ON users;
 CREATE POLICY "Admin can read all users"
   ON users FOR SELECT
-  USING (
-    EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND is_admin = true)
-  );
+  USING (public.is_admin());
 
 -- ============================================================
 -- Done. Verify in the Supabase Table Editor:
 --   markets.status now accepts 'waiting'
 --   markets.invite_token column exists
+--   public.is_admin() function exists
 -- ============================================================

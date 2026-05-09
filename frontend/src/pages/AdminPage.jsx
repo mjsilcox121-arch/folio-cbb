@@ -65,8 +65,14 @@ export default function AdminPage() {
   useEffect(() => {
     if (!user) return;
     supabase.from("users").select("is_admin").eq("id", user.id).single()
-      .then(({ data }) => setIsAdmin(data?.is_admin === true))
-      .catch(() => setIsAdmin(false));
+      .then(({ data, error }) => {
+        console.log("[AdminPage] admin check — data:", data, "error:", error, "user.id:", user.id);
+        setIsAdmin(data?.is_admin === true);
+      })
+      .catch((err) => {
+        console.error("[AdminPage] admin check threw:", err);
+        setIsAdmin(false);
+      });
   }, [user]);
 
   const loadMarkets = useCallback(async () => {

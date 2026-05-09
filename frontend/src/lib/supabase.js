@@ -35,12 +35,12 @@ export async function getTeams() {
 
 // ── Markets ────────────────────────────────────────────────────────────────
 
-export async function createMarket(name, maxPlayers) {
+export async function createMarket(name, maxPlayers, seasonId) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
   const { data, error } = await supabase
     .from("markets")
-    .insert({ name, max_players: maxPlayers, created_by: user.id, status: "waiting" })
+    .insert({ name, max_players: maxPlayers, season_id: seasonId, created_by: user.id, status: "waiting" })
     .select()
     .single();
   if (error) throw new Error("[supabase] createMarket failed: " + error.message);

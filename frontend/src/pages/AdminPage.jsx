@@ -48,6 +48,7 @@ export default function AdminPage() {
 
   const [newName, setNewName]       = useState("");
   const [newMax, setNewMax]         = useState(8);
+  const [newSeason, setNewSeason]   = useState("2024");
   const [createError, setCreateError] = useState("");
   const [creating, setCreating]     = useState(false);
 
@@ -98,7 +99,7 @@ export default function AdminPage() {
     e.preventDefault();
     if (!newName.trim()) { setCreateError("Market name is required."); return; }
     setCreating(true); setCreateError("");
-    try { await createMarket(newName.trim(), Number(newMax)); setNewName(""); setNewMax(8); await loadMarkets(); }
+    try { await createMarket(newName.trim(), Number(newMax), newSeason); setNewName(""); setNewMax(8); setNewSeason("2024"); await loadMarkets(); }
     catch (err) { setCreateError(err.message); }
     finally { setCreating(false); }
   }
@@ -200,6 +201,12 @@ export default function AdminPage() {
             <label style={labelStyle}>Market name</label>
             <input style={inputStyle} type="text" placeholder="e.g. Folio Beta 2025"
               value={newName} onChange={(e) => setNewName(e.target.value)} disabled={creating} />
+          </div>
+          <div style={{ width: 110 }}>
+            <label style={labelStyle}>Season</label>
+            <select style={inputStyle} value={newSeason} onChange={(e) => setNewSeason(e.target.value)} disabled={creating}>
+              {["2024","2023","2018","2014"].map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
           </div>
           <div style={{ width: 130 }}>
             <label style={labelStyle}>Max players</label>

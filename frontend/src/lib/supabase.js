@@ -142,10 +142,11 @@ export async function joinMarket(marketId) {
 }
 
 export async function addUserToMarketByEmail(marketId, email) {
+  // Look up by username (profiles.username stores the email at signup)
   const { data: targetUser, error: lookupError } = await supabase
-    .from("users")
+    .from("profiles")
     .select("id")
-    .eq("email", email)
+    .eq("username", email)
     .maybeSingle();
   if (lookupError) throw new Error("[supabase] User lookup failed: " + lookupError.message);
   if (!targetUser) throw new Error(`No account found for ${email}. The user must sign up first.`);
@@ -157,26 +158,29 @@ export async function addUserToMarketByEmail(marketId, email) {
     .eq("user_id", userId)
     .maybeSingle();
   if (existing) throw new Error(`${email} is already a member of this market.`);
+  const { data: market, error: mktError } = await supabase
+    .from("markets")
+    .select("starting_budget")
+    .eq("id", marketId)
+    .single();
+  if (mktError) throw new Error("[supabase] addUserToMarketByEmail (fetch market) failed: " + mktError.message);
   const { error: mmError } = await supabase
     .from("market_members")
-    .insert({ market_id: marketId, user_id: userId });
+    .insert({ market_id: marketId, user_id: userId, cash_balance: market.starting_budget ?? 100 });
   if (mmError) throw new Error("[supabase] addUserToMarketByEmail (market_members) failed: " + mmError.message);
-  const { error: pfError } = await supabase
-    .from("portfolios")
-    .insert({ market_id: marketId, user_id: userId, cash: 100.00, locked: false });
-  if (pfError) throw new Error("[supabase] addUserToMarketByEmail (portfolios) failed: " + pfError.message);
 }
 
 export async function getMarketMembers(marketId) {
   const { data, error } = await supabase
     .from("market_members")
-    .select("user_id, joined_at, users(email)")
+    .select("user_id, joined_at, cash_balance, profiles(username)")
     .eq("market_id", marketId);
   if (error) throw new Error("[supabase] getMarketMembers failed: " + error.message);
   return (data ?? []).map((row) => ({
     userId: row.user_id,
     joinedAt: row.joined_at,
-    email: row.users?.email ?? "unknown",
+    cashBalance: row.cash_balance,
+    email: row.profiles?.username ?? "unknown",
   }));
 }
 

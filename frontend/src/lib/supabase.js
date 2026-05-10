@@ -128,14 +128,17 @@ export async function joinMarket(marketId) {
   if (!user) throw new Error("Not authenticated");
   const already = await isMarketMember(marketId);
   if (already) return;
+  // Fetch starting_budget from the market so cash_balance is initialised correctly
+  const { data: market, error: mktError } = await supabase
+    .from("markets")
+    .select("starting_budget")
+    .eq("id", marketId)
+    .single();
+  if (mktError) throw new Error("[supabase] joinMarket (fetch market) failed: " + mktError.message);
   const { error: mmError } = await supabase
     .from("market_members")
-    .insert({ market_id: marketId, user_id: user.id });
+    .insert({ market_id: marketId, user_id: user.id, cash_balance: market.starting_budget ?? 100 });
   if (mmError) throw new Error("[supabase] joinMarket (market_members) failed: " + mmError.message);
-  const { error: pfError } = await supabase
-    .from("portfolios")
-    .insert({ market_id: marketId, user_id: user.id, cash: 100.00, locked: false });
-  if (pfError) throw new Error("[supabase] joinMarket (portfolios) failed: " + pfError.message);
 }
 
 export async function addUserToMarketByEmail(marketId, email) {

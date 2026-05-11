@@ -5,7 +5,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
 import {
   createMarket,
   getAllMarkets,
@@ -14,6 +13,8 @@ import {
   addUserToMarketByEmail,
   getMarketMembers,
   removeMarketMember,
+  getIsAdmin,
+  executeQueue,
 } from "../lib/supabase";
 
 const STATUS_NEXT = { waiting: "draft", draft: "active", active: "complete" };
@@ -60,14 +61,15 @@ export default function AdminPage() {
   const [addEmail, setAddEmail]           = useState({});
   const [addError, setAddError]           = useState({});
   const [addLoading, setAddLoading]       = useState({});
-  const [statusLoading, setStatusLoading] = useState({});
-  const [logoutError, setLogoutError]     = useState("");
+  const [statusLoading, setStatusLoading]   = useState({});
+  const [execLoading, setExecLoading]       = useState({});
+  const [execResult, setExecResult]         = useState({});
+  const [execError, setExecError]           = useState({});
+  const [logoutError, setLogoutError]       = useState("");
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("users").select("is_admin").eq("id", user.id).single()
-      .then(({ data }) => setIsAdmin(data?.is_admin === true))
-      .catch(() => setIsAdmin(false));
+    getIsAdmin().then((result) => setIsAdmin(result)).catch(() => setIsAdmin(false));
   }, [user]);
 
   const loadMarkets = useCallback(async () => {
@@ -143,6 +145,22 @@ export default function AdminPage() {
     try { await updateMarketStatus(market.id, next); await loadMarkets(); }
     catch (err) { alert("Failed to update status: " + err.message); }
     finally { setStatusLoading((s) => ({ ...s, [market.id]: false })); }
+  }
+
+  async function handleExecuteQueue(market) {
+    const week = market.current_week ?? 0;
+    if (!window.confirm(`Execute queue for "${market.name}" — Week ${week}?\n\nThis will process all pending buy/sell requests in portfolio-value order. This cannot be undone.`)) return;
+    setExecLoading((s) => ({ ...s, [market.id]: true }));
+    setExecError((s) => ({ ...s, [market.id]: "" }));
+    setExecResult((s) => ({ ...s, [market.id]: null }));
+    try {
+      const result = await executeQueue(market.id, week);
+      setExecResult((s) => ({ ...s, [market.id]: result }));
+    } catch (err) {
+      setExecError((s) => ({ ...s, [market.id]: err.message }));
+    } finally {
+      setExecLoading((s) => ({ ...s, [market.id]: false }));
+    }
   }
 
   async function handleLogout() {
@@ -298,6 +316,49 @@ export default function AdminPage() {
                 {addError[market.id] && <div style={errorStyle}>{addError[market.id]}</div>}
                 <div style={{ fontSize: 11, color: "#aaa", fontFamily: "Arial, sans-serif", marginTop: 5 }}>
                   User must have a Folio account. Creates their market_members and portfolios rows.
+                </div>
+              </div>
+
+              {/* Simulation controls */}
+              <div style={{ marginBottom: 18 }}>
+                <div style={sectionLabel}>Simulation controls</div>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 12, color: "#888", fontFamily: "Arial, sans-serif" }}>
+                    Current week: <strong style={{ color: "#0d1b2a" }}>{market.current_week ?? 0}</strong>
+                  </div>
+                  <button
+                    onClick={() => handleExecuteQueue(market)}
+                    disabled={execLoading[market.id]}
+                    style={{
+                      fontFamily: "Arial, sans-serif", fontSize: 13, fontWeight: 600,
+                      padding: "0 16px", height: 38, borderRadius: 7, cursor: execLoading[market.id] ? "not-allowed" : "pointer",
+                      background: execLoading[market.id] ? "#ccc" : "#185FA5", color: "#fff", border: "none", whiteSpace: "nowrap",
+                    }}
+                  >
+                    {execLoading[market.id] ? "Executing…" : "Execute Queue"}
+                  </button>
+                </div>
+                {execResult[market.id] && (
+                  <div style={{ marginTop: 8, fontSize: 13, fontFamily: "Arial, sans-serif", color: "#0d1b2a" }}>
+                    {execResult[market.id].total === 0
+                      ? <span style={{ color: "#aaa" }}>No pending requests — queue was already empty.</span>
+                      : <>
+                          Done: <strong style={{ color: "#3B6D11" }}>{execResult[market.id].succeeded} executed</strong>
+                          {execResult[market.id].failed > 0 && (
+                            <>, <strong style={{ color: "#993C1D" }}>{execResult[market.id].failed} failed</strong></>
+                          )}
+                          {" "}of {execResult[market.id].total} total requests.
+                        </>
+                    }
+                  </div>
+                )}
+                {execError[market.id] && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: "#993C1D", fontFamily: "Arial, sans-serif" }}>
+                    {execError[market.id]}
+                  </div>
+                )}
+                <div style={{ marginTop: 6, fontSize: 11, color: "#aaa", fontFamily: "Arial, sans-serif" }}>
+                  Execute Queue before Advance Week. Running twice is safe — second run processes 0 requests.
                 </div>
               </div>
 

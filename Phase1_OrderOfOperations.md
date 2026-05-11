@@ -179,9 +179,9 @@
 - [x] Implementation: PostgreSQL RPC `submit_queue_request_validated()` (SECURITY DEFINER, atomic check+insert); client calls `supabase.rpc()` instead of direct INSERT
 - [x] Migration file: `day12_queue_validation.sql` — run in Supabase SQL Editor before testing
 
-### Day 13 — Execute Queue Logic
+### Day 13 — Execute Queue Logic ✅ Completed May 11, 2026
 *The core game mechanic for weekly play.*
-- [ ] Write the Execute Queue function (Supabase Edge Function or server-side):
+- [x] Write the Execute Queue function (Supabase Edge Function or server-side):
   1. Get all portfolios in the market, sort by total value ascending (lowest first)
   2. For each portfolio in order: attempt to execute their **first** pending request
   3. Then loop again — each portfolio's **second** request, and so on
@@ -190,8 +190,10 @@
   6. On failure: mark status = `failed`, store failure_reason (`not_enough_funds` or `shares_unavailable`), do not apply any change
   7. On success: update `portfolio_holdings`, update `cash`, mark status = `executed`
   8. Write an `execution_log` record when complete
-- [ ] Add **Execute Queue** button to the simulation controls in the admin view (next to "Advance Week")
-- [ ] Advance Week should still work as before, but queue execution should happen before week advances
+- [x] Add **Execute Queue** button to the simulation controls in the admin view (next to "Advance Week")
+- [x] Advance Week should still work as before, but queue execution should happen before week advances
+- [x] Implementation: PostgreSQL RPC `execute_queue(market_id, week)` (SECURITY DEFINER, round-robin ordering by portfolio value); `total_shares` column added to `queue_requests`; `executeQueue()` added to `supabase.js`; Simulation Controls panel added to AdminPage
+- [x] Migration file: `day13_execute_queue.sql` — run in Supabase SQL Editor before testing
 
 ### 🧪 Manual Test Checkpoint — After Day 13
 *The core game mechanic. Use two test accounts in two browser windows.*

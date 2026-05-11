@@ -513,6 +513,23 @@ export async function getMyQueueRequests(marketId, week) {
 }
 
 /**
+ * Admin-only: execute all pending queue requests for a market week.
+ * Returns { total, succeeded, failed }.
+ */
+export async function executeQueue(marketId, week) {
+  const { data, error } = await supabase.rpc("execute_queue", {
+    p_market_id: marketId,
+    p_week:      week,
+  });
+  if (error) {
+    const msg = error.message?.trim();
+    if (msg === "not_authorized") throw new Error("Admin access required.");
+    throw new Error("[supabase] executeQueue: " + error.message);
+  }
+  return data; // { total, succeeded, failed }
+}
+
+/**
  * Delete a pending queue request. RLS prevents cancelling executed/failed rows.
  */
 export async function cancelQueueRequest(requestId) {

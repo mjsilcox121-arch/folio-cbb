@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import {
   SEASONS,
@@ -20,6 +20,18 @@ import LogPage from "./pages/LogPage";
 import DraftPage from "./pages/DraftPage";
 import AdminPage from "./pages/AdminPage";
 import JoinPage from "./pages/JoinPage";
+import {
+  getPortfolioState,
+  buyShareDB,
+  sellShareDB,
+  getTransactionHistory,
+  getDividendHistory,
+  getPortfolioSnapshots,
+  savePortfolioSnapshot,
+  saveDividendPayouts,
+  updateMemberFinancials,
+  advanceMarketWeek,
+} from "./lib/supabase";
 import "./App.css";
 
 const DEFAULT_BUDGET     = 100;
@@ -30,13 +42,14 @@ function buildDefaultOverrides() {
 }
 
 // ── Market + Portfolio pages share all game state ─────────────────────────────
-// State lives here so it survives navigation between /market and /portfolio.
+// Portfolio state (holdings, cash, trade history) now lives in Supabase (Day 8).
+// UI state (search, sort, modals) remains local React state.
 function GameLayout() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const { market, markets, setActiveMarketId } = useMarket();
+  const { market, markets, setActiveMarketId, refresh: refreshMarkets } = useMarket();
 
-  // Settings
+  // ── Settings (initialized from market on load) ─────────────────────────────
   const [seasonId, setSeasonId]                     = useState(DEFAULT_SEASON_ID);
   const [budget, setBudget]                         = useState(DEFAULT_BUDGET);
   const [dividendMultiplier, setDividendMultiplier] = useState(DEFAULT_MULTIPLIER);
@@ -47,25 +60,102 @@ function GameLayout() {
   const season = useMemo(() => getSeason(seasonId), [seasonId]);
   const { WEEKS, TEAM_HISTORY, SCHEDULES, EVENTS_BY_WEEK, label: seasonLabel } = season;
 
-  // Game state
-  const [week, setWeek]                           = useState(0);
-  const [portfolio, setPortfolio]                 = useState({});
-  const [cash, setCash]                           = useState(DEFAULT_BUDGET);
-  const [dividendBank, setDividendBank]           = useState(0);
-  const [draftMode, setDraftMode]                 = useState(true);
-  const [search, setSearch]                       = useState("");
-  const [confFilter, setConfFilter]               = useState("");
-  const [sortCol, setSortCol]                     = useState("adjEM");
-  const [sortAsc, setSortAsc]                     = useState(false);
-  const [selectedTeam, setSelectedTeam]           = useState(null);
-  const [tradeLog, setTradeLog]                   = useState([]);
-  const [dividendLog, setDividendLog]             = useState([]);
-  const [portfolioHistory, setPortfolioHistory]   = useState([DEFAULT_BUDGET]);
-  const [teamDividends, setTeamDividends]         = useState({});
+  // ── DB-backed game state ───────────────────────────────────────────────────
+  // cashBalance replaces the old separate cash + dividendBank states.
+  // dividendsEarned is a running cumulative total for display purposes.
+  const [week, setWeek]                         = useState(0);
+  const [portfolio, setPortfolio]               = useState({});   // { teamName: sharesOwned }
+  const [cashBalance, setCashBalance]           = useState(DEFAULT_BUDGET);
+  const [dividendsEarned, setDividendsEarned]   = useState(0);
+  const [tradeLog, setTradeLog]                 = useState([]);
+  const [dividendLog, setDividendLog]           = useState([]);
+  const [portfolioHistory, setPortfolioHistory] = useState([DEFAULT_BUDGET]);
 
-  const buyingPower = dividendBank + cash;
+  // ── Loading / async flags ──────────────────────────────────────────────────
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [tradePending, setTradePending]         = useState(false);
+  const [tradeError, setTradeError]             = useState("");
 
-  // ── Derived data ───────────────────────────────────────────────────────────
+  // ── UI state ───────────────────────────────────────────────────────────────
+  const [search, setSearch]             = useState("");
+  const [confFilter, setConfFilter]     = useState("");
+  const [sortCol, setSortCol]           = useState("adjEM");
+  const [sortAsc, setSortAsc]           = useState(false);
+  const [selectedTeam, setSelectedTeam] = useState(null);
+
+  // ── Derived constants ──────────────────────────────────────────────────────
+  const draftMode      = week === 0;
+  const startingBudget = market?.starting_budget ? Number(market.starting_budget) : budget;
+  const buyingPower    = cashBalance; // combined cash + dividends in one balance
+
+  // ── Load portfolio from DB when market changes ─────────────────────────────
+  const loadPortfolioFromDB = useCallback(async (marketId, startBudget) => {
+    setPortfolioLoading(true);
+    setTradeError("");
+    try {
+      const [state, txns, divs, snaps] = await Promise.all([
+        getPortfolioState(marketId),
+        getTransactionHistory(marketId),
+        getDividendHistory(marketId),
+        getPortfolioSnapshots(marketId),
+      ]);
+
+      setPortfolio(state.holdings);
+      setCashBalance(state.cashBalance > 0 ? state.cashBalance : startBudget);
+      setDividendsEarned(state.dividendsEarned);
+
+      // Map DB transactions → UI tradeLog shape
+      setTradeLog(
+        txns.map((t) => ({
+          week:   t.week,
+          team:   t.team_id,
+          action: t.action.toUpperCase(),
+          qty:    t.shares,
+          price:  Number(t.price_per_share),
+          total:  Number(t.total_value),
+        }))
+      );
+
+      // Map DB dividend_payouts → UI dividendLog shape
+      setDividendLog(
+        divs.map((d) => ({
+          week:        d.week,
+          team:        d.team_id,
+          event:       d.event_label,
+          baseValue:   Number(d.base_value),
+          multiplier:  Number(d.multiplier),
+          sharesOwned: d.shares_owned,
+          payout:      Number(d.payout),
+        }))
+      );
+
+      // Build portfolioHistory: [startBudget, ...snapshots sorted by week]
+      const sortedSnaps = [...snaps].sort((a, b) => a.week - b.week);
+      setPortfolioHistory([startBudget, ...sortedSnaps.map((s) => Number(s.total_value))]);
+    } catch (err) {
+      console.error("[GameLayout] loadPortfolioFromDB failed:", err.message);
+    } finally {
+      setPortfolioLoading(false);
+    }
+  }, []); // state setters are stable
+
+  // Sync settings and reload portfolio whenever the active market changes
+  useEffect(() => {
+    if (!market?.id) return;
+
+    if (market.season_id) setSeasonId(market.season_id);
+    setWeek(market.current_week ?? 0);
+    if (market.dividend_multiplier != null) setDividendMultiplier(Number(market.dividend_multiplier));
+    if (market.dividend_overrides && Object.keys(market.dividend_overrides).length > 0) {
+      setDividendOverrides({ ...buildDefaultOverrides(), ...market.dividend_overrides });
+    }
+    const startBudget = market.starting_budget ? Number(market.starting_budget) : DEFAULT_BUDGET;
+    setBudget(startBudget);
+
+    loadPortfolioFromDB(market.id, startBudget);
+  }, [market?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Derived game data ──────────────────────────────────────────────────────
   const teamsThisWeek = useMemo(() => TEAM_HISTORY.map((t) => {
     const adjEM     = t.weeklyAdjEM[week];
     const prevAdjEM = week > 0 ? t.weeklyAdjEM[week - 1] : null;
@@ -76,9 +166,9 @@ function GameLayout() {
       : null;
     return {
       ...t, adjEM, prevAdjEM, shares, price, prevPrice,
-      adjEMDelta:  prevAdjEM != null ? Math.round((adjEM - prevAdjEM) * 100) / 100 : null,
-      priceDelta:  prevPrice != null ? Math.round((price - prevPrice) * 100) / 100 : null,
-      record:      t.weeklyRecord[week],
+      adjEMDelta: prevAdjEM != null ? Math.round((adjEM - prevAdjEM) * 100) / 100 : null,
+      priceDelta: prevPrice != null ? Math.round((price - prevPrice) * 100) / 100 : null,
+      record:     t.weeklyRecord[week],
     };
   }), [week, TEAM_HISTORY]);
 
@@ -88,13 +178,19 @@ function GameLayout() {
       return t ? sum + t.price * owned : sum;
     }, 0), [portfolio, teamsThisWeek]);
 
-  const totalValue = holdingsValue + cash + dividendBank;
-  const gain       = totalValue - budget;
+  const totalValue = holdingsValue + cashBalance;
+  const gain       = totalValue - startingBudget;
+
+  // Per-team dividend totals derived from dividendLog (no separate state needed)
+  const teamDividends = useMemo(() =>
+    dividendLog.reduce((acc, d) => {
+      acc[d.team] = Math.round(((acc[d.team] || 0) + d.payout) * 100) / 100;
+      return acc;
+    }, {}), [dividendLog]);
 
   const pieSlices = useMemo(() => {
     const slices = [];
-    const totalCash = cash + dividendBank;
-    if (totalCash > 0.005) slices.push({ label: "Cash & Dividends", value: totalCash, color: "#B0BEC5" });
+    if (cashBalance > 0.005) slices.push({ label: "Cash & Dividends", value: cashBalance, color: "#B0BEC5" });
     Object.entries(portfolio).filter(([, o]) => o > 0).forEach(([name, owned], idx) => {
       const t      = teamsThisWeek.find((t) => t.team === name);
       const posVal = t ? t.price * owned : 0;
@@ -104,7 +200,7 @@ function GameLayout() {
       if (divVal > 0.005) slices.push({ label: `${name} (divs)`,  value: divVal, color: col + "99" });
     });
     return slices;
-  }, [cash, dividendBank, portfolio, teamsThisWeek, teamDividends]);
+  }, [cashBalance, portfolio, teamsThisWeek, teamDividends]);
   const pieTotal = pieSlices.reduce((s, sl) => s + sl.value, 0);
 
   const conferences = useMemo(() => [...new Set(TEAM_HISTORY.map((t) => t.conference))].sort(), [TEAM_HISTORY]);
@@ -131,27 +227,35 @@ function GameLayout() {
       const prevVal    = t?.prevPrice != null ? t.prevPrice * owned : null;
       const valueDelta = prevVal != null ? Math.round((value - prevVal) * 100) / 100 : null;
       const weekDiv    = dividendLog.filter((d) => d.week === week && d.team === name).reduce((s, d) => s + d.payout, 0);
-      return { teamName: name, owned, idx, adjEM: t?.adjEM ?? 0, adjEMDelta: t?.adjEMDelta ?? null, price: t?.price ?? 0, priceDelta: t?.priceDelta ?? null, value, valueDelta, weekDiv, totalDivs: teamDividends[name] || 0, conf: t?.conference ?? "", record: t?.record ?? "" };
+      return {
+        teamName: name, owned, idx,
+        adjEM: t?.adjEM ?? 0, adjEMDelta: t?.adjEMDelta ?? null,
+        price: t?.price ?? 0, priceDelta: t?.priceDelta ?? null,
+        value, valueDelta, weekDiv,
+        totalDivs: teamDividends[name] || 0,
+        conf: t?.conference ?? "", record: t?.record ?? "",
+      };
     }).sort((a, b) => b.value - a.value), [portfolio, teamsThisWeek, dividendLog, week, teamDividends]);
 
   const portfolioValueDelta = portfolioHistory.length >= 2
     ? Math.round((portfolioHistory[portfolioHistory.length - 1] - portfolioHistory[portfolioHistory.length - 2]) * 100) / 100
     : null;
   const weekDividendTotal = dividendLog.filter((d) => d.week === week).reduce((s, d) => s + d.payout, 0);
-  const ownedCount = Object.values(portfolio).reduce((s, v) => s + v, 0);
+  const ownedCount        = Object.values(portfolio).reduce((s, v) => s + v, 0);
+
+  // Chart labels aligned with portfolioHistory data points
+  const chartLabels = ["Start", ...WEEKS.slice(0, portfolioHistory.length - 1)];
 
   // Team modal derived data
   const teamDetail = useMemo(() => {
     if (!selectedTeam) return null;
     const t = TEAM_HISTORY.find((t) => t.team === selectedTeam);
     if (!t) return null;
-    const dataUpToNow  = t.weeklyAdjEM.slice(0, week + 1);
-    const priceHistory = dataUpToNow.map((e) => Math.round((e / calcShares(e)) * 100) / 100);
-    const allGames     = SCHEDULES[selectedTeam] || [];
-    const hasSchedule  = allGames.length > 0;
-    const pastGames    = allGames.filter((g) => g.week <= week);
-    const futureGames  = allGames.filter((g) => g.week > week);
-    const tooltipRows  = dataUpToNow.map((_, i) => {
+    const dataUpToNow = t.weeklyAdjEM.slice(0, week + 1);
+    const allGames    = SCHEDULES[selectedTeam] || [];
+    const pastGames   = allGames.filter((g) => g.week <= week);
+    const futureGames = allGames.filter((g) => g.week > week);
+    const tooltipRows = dataUpToNow.map((_, i) => {
       const wk = i + 1;
       const games = allGames.filter((g) => g.week === wk);
       if (!games.length) return null;
@@ -161,23 +265,94 @@ function GameLayout() {
       });
     });
     const earnedDivs = dividendLog.filter((d) => d.team === selectedTeam);
-    return { ...t, dataUpToNow, priceHistory, last5: pastGames.slice(-5), next5: futureGames.slice(0, 5), tooltipRows, earnedDivs, hasSchedule };
+    return {
+      ...t, dataUpToNow,
+      last5: pastGames.slice(-5), next5: futureGames.slice(0, 5),
+      tooltipRows, earnedDivs,
+      hasSchedule: allGames.length > 0,
+    };
   }, [selectedTeam, week, dividendLog, TEAM_HISTORY, SCHEDULES]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
-  function advanceWeek() {
-    if (week >= WEEKS.length - 1) return;
+
+  async function buyShare(teamName) {
+    const team = teamsThisWeek.find((t) => t.team === teamName);
+    if (!team || buyingPower < team.price - 0.001) return;
+    const owned = portfolio[teamName] || 0;
+    if (owned >= team.shares || tradePending) return;
+
+    setTradePending(true);
+    setTradeError("");
+
+    if (market?.id) {
+      // Persist to DB
+      try {
+        const result = await buyShareDB(market.id, teamName, team.price, week);
+        setPortfolio((p) => ({ ...p, [teamName]: result.newShares }));
+        setCashBalance(result.newCashBalance);
+        setTradeLog((l) => [{
+          week, team: teamName, action: "BUY", qty: 1, price: team.price, total: team.price,
+        }, ...l]);
+      } catch (err) {
+        console.error("[buyShare]", err.message);
+        setTradeError("Purchase failed — " + err.message);
+      } finally {
+        setTradePending(false);
+      }
+    } else {
+      // Demo mode: no market connected, local state only
+      setPortfolio((p) => ({ ...p, [teamName]: (p[teamName] || 0) + 1 }));
+      setCashBalance((c) => Math.round((c - team.price) * 100) / 100);
+      setTradeLog((l) => [{
+        week, team: teamName, action: "BUY", qty: 1, price: team.price, total: team.price,
+      }, ...l]);
+      setTradePending(false);
+    }
+  }
+
+  async function sellShare(teamName) {
+    const owned = portfolio[teamName] || 0;
+    if (owned === 0 || tradePending) return;
+    const team = teamsThisWeek.find((t) => t.team === teamName);
+    if (!team) return;
+
+    setTradePending(true);
+    setTradeError("");
+
+    if (market?.id) {
+      try {
+        const result = await sellShareDB(market.id, teamName, team.price, week);
+        setPortfolio((p) => ({ ...p, [teamName]: result.newShares }));
+        setCashBalance(result.newCashBalance);
+        setTradeLog((l) => [{
+          week, team: teamName, action: "SELL", qty: 1, price: team.price, total: team.price,
+        }, ...l]);
+      } catch (err) {
+        console.error("[sellShare]", err.message);
+        setTradeError("Sale failed — " + err.message);
+      } finally {
+        setTradePending(false);
+      }
+    } else {
+      setPortfolio((p) => ({ ...p, [teamName]: p[teamName] - 1 }));
+      setCashBalance((c) => Math.round((c + team.price) * 100) / 100);
+      setTradeLog((l) => [{
+        week, team: teamName, action: "SELL", qty: 1, price: team.price, total: team.price,
+      }, ...l]);
+      setTradePending(false);
+    }
+  }
+
+  async function advanceWeek() {
+    if (week >= WEEKS.length - 1 || tradePending) return;
     const nextWeek = week + 1;
-    const newHoldings = Object.entries(portfolio).reduce((sum, [name, owned]) => {
-      const t = TEAM_HISTORY.find((t) => t.team === name);
-      if (!t) return sum;
-      const adjEM = t.weeklyAdjEM[nextWeek];
-      return sum + (adjEM / calcShares(adjEM)) * owned;
-    }, 0);
+
+    // 1. Compute dividends from static season data
     const weekEvents = EVENTS_BY_WEEK[nextWeek] || [];
-    let newDivTotal = 0;
-    const newDivLogs = [];
-    const newTeamDivs = { ...teamDividends };
+    let weekDivTotal = 0;
+    const dbDivRows  = [];
+    const uiDivLogs  = [];
+
     for (const evt of weekEvents) {
       const owned = portfolio[evt.team] || 0;
       if (owned === 0) continue;
@@ -186,47 +361,59 @@ function GameLayout() {
         ? dividendOverrides[ruleKey]
         : evt.value;
       const payout = Math.round(baseVal * dividendMultiplier * owned * 100) / 100;
-      newDivTotal += payout;
-      newTeamDivs[evt.team] = Math.round(((newTeamDivs[evt.team] || 0) + payout) * 100) / 100;
-      newDivLogs.push({ week: nextWeek, weekLabel: WEEKS[nextWeek], team: evt.team, event: evt.event, baseValue: baseVal, multiplier: dividendMultiplier, sharesOwned: owned, payout });
+      weekDivTotal += payout;
+      dbDivRows.push({
+        teamId: evt.team, eventKey: ruleKey ?? evt.event, eventLabel: evt.event,
+        sharesOwned: owned, baseValue: baseVal, multiplier: dividendMultiplier, payout,
+      });
+      uiDivLogs.push({
+        week: nextWeek, team: evt.team, event: evt.event,
+        baseValue: baseVal, multiplier: dividendMultiplier, sharesOwned: owned, payout,
+      });
     }
-    const newDivBank = Math.round((dividendBank + newDivTotal) * 100) / 100;
-    setDividendBank(newDivBank);
-    setTeamDividends(newTeamDivs);
-    setDividendLog((l) => [...newDivLogs.reverse(), ...l]);
-    setPortfolioHistory((h) => [...h, Math.round((newHoldings + cash + newDivBank) * 100) / 100]);
+
+    // 2. Compute updated values
+    const newHoldingsValue = Object.entries(portfolio).reduce((sum, [name, owned]) => {
+      const t = TEAM_HISTORY.find((t) => t.team === name);
+      if (!t) return sum;
+      const er = t.weeklyAdjEM[nextWeek];
+      return sum + (er / calcShares(er)) * owned;
+    }, 0);
+    const newCashBalance = Math.round((cashBalance + weekDivTotal) * 100) / 100;
+    const newDivsEarned  = Math.round((dividendsEarned + weekDivTotal) * 100) / 100;
+    const newTotalValue  = Math.round((newHoldingsValue + newCashBalance) * 100) / 100;
+
+    // 3. Write to DB (non-blocking — local state advances regardless)
+    if (market?.id) {
+      try {
+        const dbWrites = [
+          savePortfolioSnapshot(market.id, nextWeek, newTotalValue, newCashBalance),
+          advanceMarketWeek(market.id, nextWeek),
+        ];
+        if (weekDivTotal > 0) {
+          dbWrites.push(saveDividendPayouts(market.id, nextWeek, dbDivRows));
+          dbWrites.push(updateMemberFinancials(market.id, newCashBalance, weekDivTotal));
+        }
+        await Promise.all(dbWrites);
+        refreshMarkets(); // update market.current_week in context
+      } catch (err) {
+        console.error("[advanceWeek] DB write failed:", err.message);
+        // Non-fatal — local state still advances
+      }
+    }
+
+    // 4. Update local state
+    setCashBalance(newCashBalance);
+    setDividendsEarned(newDivsEarned);
+    setDividendLog((l) => [...uiDivLogs.reverse(), ...l]);
+    setPortfolioHistory((h) => [...h, newTotalValue]);
     setWeek(nextWeek);
-    setDraftMode(false);
   }
 
-  function buyShare(teamName) {
-    const team = teamsThisWeek.find((t) => t.team === teamName);
-    if (!team || buyingPower < team.price - 0.001) return;
-    const owned = portfolio[teamName] || 0;
-    if (owned >= team.shares) return;
-    let remaining = team.price, newDivBank = dividendBank, newCash = cash;
-    if (newDivBank >= remaining) { newDivBank = Math.round((newDivBank - remaining) * 100) / 100; remaining = 0; }
-    else { remaining = Math.round((remaining - newDivBank) * 100) / 100; newDivBank = 0; newCash = Math.round((newCash - remaining) * 100) / 100; }
-    setPortfolio((p) => ({ ...p, [teamName]: (p[teamName] || 0) + 1 }));
-    setDividendBank(newDivBank);
-    setCash(newCash);
-    setTradeLog((l) => [{ week, weekLabel: WEEKS[week], team: teamName, action: "BUY", qty: 1, price: team.price, total: team.price }, ...l]);
-  }
-
-  function sellShare(teamName) {
-    const owned = portfolio[teamName] || 0;
-    if (owned === 0) return;
-    const team = teamsThisWeek.find((t) => t.team === teamName);
-    if (!team) return;
-    setPortfolio((p) => ({ ...p, [teamName]: p[teamName] - 1 }));
-    setCash((c) => Math.round((c + team.price) * 100) / 100);
-    setTradeLog((l) => [{ week, weekLabel: WEEKS[week], team: teamName, action: "SELL", qty: 1, price: team.price, total: team.price }, ...l]);
-  }
-
-  function resetGame() {
-    setWeek(0); setPortfolio({}); setCash(budget); setDividendBank(0);
-    setTeamDividends({}); setDraftMode(true); setSearch(""); setConfFilter("");
-    setTradeLog([]); setDividendLog([]); setSelectedTeam(null); setPortfolioHistory([budget]);
+  // Reload portfolio from DB (replaces old resetGame for multi-user play)
+  function handleRefreshPortfolio() {
+    if (!market?.id) return;
+    loadPortfolioFromDB(market.id, startingBudget);
   }
 
   function handleSort(col) {
@@ -237,12 +424,17 @@ function GameLayout() {
   function handleChangeSeason(newId) {
     if (newId === seasonId) return;
     const newLabel = getSeason(newId).label;
-    const ok = window.confirm(`Switch to ${newLabel}? This will reset your current game.`);
+    const ok = window.confirm(`Switch to ${newLabel}? This will reset your current local game state.`);
     if (!ok) return;
     setSeasonId(newId);
-    setWeek(0); setPortfolio({}); setCash(budget); setDividendBank(0);
-    setTeamDividends({}); setDraftMode(true); setSearch(""); setConfFilter("");
-    setTradeLog([]); setDividendLog([]); setSelectedTeam(null); setPortfolioHistory([budget]);
+    setWeek(0);
+    setPortfolio({});
+    setCashBalance(startingBudget);
+    setDividendsEarned(0);
+    setTradeLog([]);
+    setDividendLog([]);
+    setSelectedTeam(null);
+    setPortfolioHistory([startingBudget]);
   }
 
   async function handleLogout() {
@@ -256,7 +448,7 @@ function GameLayout() {
     }
   }
 
-  // ── Shared top bar + week controls ────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="container">
       <div className="topbar">
@@ -290,14 +482,22 @@ function GameLayout() {
         </div>
       )}
 
+      {tradeError && (
+        <div style={{ background: "#2e1a1a", border: "1px solid #4a2a2a", color: "#cf6f6f", borderRadius: "6px", padding: "0.5rem 0.85rem", fontSize: "0.85rem", marginBottom: "1rem", display: "flex", alignItems: "center", gap: 8 }}>
+          {tradeError}
+          <button style={{ color: "#cf6f6f", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }} onClick={() => setTradeError("")}>Dismiss</button>
+        </div>
+      )}
+
       <div className="stat-bar">
         <div className="stat">
           <div className="stat-label">Buying power</div>
           <div className="stat-value">${buyingPower.toFixed(2)}</div>
-          <div className="stat-sub">
-            <span className="cash-tag">${cash.toFixed(2)} cash</span>
-            {dividendBank > 0 && <span className="div-tag">+${dividendBank.toFixed(2)} divs</span>}
-          </div>
+          {dividendsEarned > 0 && (
+            <div className="stat-sub">
+              <span className="div-tag">incl. ${dividendsEarned.toFixed(2)} divs</span>
+            </div>
+          )}
         </div>
         <div className="stat">
           <div className="stat-label">Holdings value</div>
@@ -305,11 +505,10 @@ function GameLayout() {
         </div>
         <div className="stat">
           <div className="stat-label">Dividends earned</div>
-          <div className="stat-value dividend-blue">${dividendBank.toFixed(2)}</div>
+          <div className="stat-value dividend-blue">${dividendsEarned.toFixed(2)}</div>
           {weekDividendTotal > 0 && <span className="delta up">+${weekDividendTotal.toFixed(2)} this wk</span>}
         </div>
         <div className="stat">
-          <div className="stat-label">Season gain/loss</div>
           <div className={`stat-value ${gain >= 0 ? "positive" : "negative"}`}>{gain >= 0 ? "+" : ""}${gain.toFixed(2)}</div>
         </div>
       </div>
@@ -357,13 +556,28 @@ function GameLayout() {
         </div>
         <div className="week-actions">
           {week < WEEKS.length - 1
-            ? <button className="advance-btn" onClick={advanceWeek}>{draftMode ? "Lock in picks & start season →" : `Advance to ${WEEKS[week + 1]} →`}</button>
-            : <span className="season-end-label">Season complete 🏆</span>}
-          <button className="reset-btn" onClick={resetGame}>Reset</button>
+            ? <button className="advance-btn" onClick={advanceWeek} disabled={tradePending}>
+                {draftMode ? "Lock in picks & start season →" : `Advance to ${WEEKS[week + 1]} →`}
+              </button>
+            : <span className="season-end-label">Season complete \U0001F3C6</span>}
+          <button
+            className="reset-btn"
+            onClick={handleRefreshPortfolio}
+            disabled={portfolioLoading || !market?.id}
+            title="Reload portfolio from database"
+          >
+            {portfolioLoading ? "Loading…" : "Refresh"}
+          </button>
         </div>
       </div>
 
-      {/* ── Route-based page views ───────────────────────────────────────── */}
+      {portfolioLoading && (
+        <div style={{ textAlign: "center", padding: "0.75rem", fontSize: 13, color: "#aaa", fontFamily: "Arial, sans-serif" }}>
+          Loading portfolio…
+        </div>
+      )}
+
+      {/* Route-based page views */}
       <Routes>
         <Route path="market" element={
           <MarketTable
@@ -379,6 +593,7 @@ function GameLayout() {
             confFilter={confFilter}
             conferences={conferences}
             maxAdjEM={maxAdjEM}
+            tradePending={tradePending}
             onSearch={setSearch}
             onConfFilter={setConfFilter}
             onSort={handleSort}
@@ -392,10 +607,11 @@ function GameLayout() {
             portfolioRows={portfolioRows}
             portfolioHistory={portfolioHistory}
             portfolioValueDelta={portfolioValueDelta}
+            chartLabels={chartLabels}
             pieSlices={pieSlices}
             pieTotal={pieTotal}
             holdingsValue={holdingsValue}
-            dividendBank={dividendBank}
+            dividendsEarned={dividendsEarned}
             weekDividendTotal={weekDividendTotal}
             dividendLog={dividendLog}
             tradeLog={tradeLog}
@@ -403,6 +619,7 @@ function GameLayout() {
             weeks={WEEKS}
             teamsThisWeek={teamsThisWeek}
             buyingPower={buyingPower}
+            tradePending={tradePending}
             buyShare={buyShare}
             sellShare={sellShare}
             onSelectTeam={setSelectedTeam}
@@ -412,11 +629,11 @@ function GameLayout() {
       </Routes>
 
       <p className="source-note">
-        {seasonLabel} season · {TEAM_HISTORY.length} D-I teams · Price = AdjEM ÷ shares · Buying power = dividends + cash · Budget: ${budget}
-        {dividendMultiplier !== 1 && <> · Dividends ×{dividendMultiplier}</>}
+        {seasonLabel} season &middot; {TEAM_HISTORY.length} D-I teams &middot; Price = Rating &divide; shares &middot; Budget: ${startingBudget}
+        {dividendMultiplier !== 1 && <> &middot; Dividends &times;{dividendMultiplier}</>}
       </p>
 
-      {/* Modals (global — visible on any game route) */}
+      {/* Modals */}
       <TeamModal
         selectedTeam={selectedTeam}
         teamDetail={teamDetail}
@@ -424,6 +641,7 @@ function GameLayout() {
         weeks={WEEKS}
         portfolio={portfolio}
         buyingPower={buyingPower}
+        tradePending={tradePending}
         buyShare={buyShare}
         sellShare={sellShare}
         onClose={() => setSelectedTeam(null)}
@@ -447,10 +665,7 @@ function GameLayout() {
   );
 }
 
-// ── Root router ───────────────────────────────────────────────────────────────
-// All game routes are wrapped in ProtectedRoute — unauthenticated users are
-// redirected to /login. The root / redirect is handled by AuthRedirect so it
-// can inspect auth state before choosing the destination.
+// Root router
 function AuthRedirect() {
   const { user, loading } = useAuth();
   if (loading) return null;
@@ -462,16 +677,10 @@ export default function App() {
     <Routes>
       <Route path="/" element={<AuthRedirect />} />
       <Route path="/login" element={<LoginPage />} />
-
-      {/* Invite link — requires auth; JoinPage handles the redirect-to-login flow */}
       <Route path="/join/:token" element={<ProtectedRoute><JoinPage /></ProtectedRoute>} />
-
-      {/* Protected game routes */}
       <Route path="/log"   element={<ProtectedRoute><LogPage /></ProtectedRoute>} />
       <Route path="/draft" element={<ProtectedRoute><DraftPage /></ProtectedRoute>} />
       <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
-
-      {/* Market + portfolio share GameLayout (shared state + topbar) */}
       <Route path="/*" element={<ProtectedRoute><GameLayout /></ProtectedRoute>} />
     </Routes>
   );

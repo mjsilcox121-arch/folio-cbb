@@ -116,12 +116,12 @@
 ## 👥 WEEK 2 — Markets & Portfolio Persistence (Days 7–10)
 
 ### Day 7 — Market Management
-- [ ] Admin can create a new market (name, max players) from `/admin`
-- [ ] Admin can generate an invite link or add users by email to a market
-- [ ] When a user joins a market, create a `portfolios` row for them with `cash = 100.00`
-- [ ] Users can see which market they belong to
-- [ ] If a user belongs to multiple markets, show a market selector (for now, just handle one market per beta)
-- [ ] Market status transitions: `waiting` → `draft` → `active` → `complete`
+- [x] Admin can create a new market (name, max players) from `/admin`
+- [x] Admin can generate an invite link or add users by email to a market
+- [x] When a user joins a market, create a `portfolios` row for them with `cash = 100.00`
+- [x] Users can see which market they belong to
+- [x] If a user belongs to multiple markets, show a market selector (for now, just handle one market per beta)
+- [x] Market status transitions: `waiting` → `draft` → `active` → `complete`
 
 ### Day 8–9 — Portfolio Persistence
 *The biggest change to existing behavior — moving from React useState to the database.*

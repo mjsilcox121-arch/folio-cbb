@@ -128,7 +128,6 @@ export async function joinMarket(marketId) {
   if (!user) throw new Error("Not authenticated");
   const already = await isMarketMember(marketId);
   if (already) return;
-  // Fetch starting_budget from the market so cash_balance is initialised correctly
   const { data: market, error: mktError } = await supabase
     .from("markets")
     .select("starting_budget")
@@ -142,7 +141,6 @@ export async function joinMarket(marketId) {
 }
 
 export async function addUserToMarketByEmail(marketId, email) {
-  // Look up by username (profiles.username stores the email at signup)
   const { data: targetUser, error: lookupError } = await supabase
     .from("profiles")
     .select("id")
@@ -177,10 +175,10 @@ export async function getMarketMembers(marketId) {
     .eq("market_id", marketId);
   if (error) throw new Error("[supabase] getMarketMembers failed: " + error.message);
   return (data ?? []).map((row) => ({
-    userId: row.user_id,
-    joinedAt: row.joined_at,
+    userId:      row.user_id,
+    joinedAt:    row.joined_at,
     cashBalance: row.cash_balance,
-    email: row.profiles?.username ?? "unknown",
+    email:       row.profiles?.username ?? "unknown",
   }));
 }
 
@@ -191,4 +189,288 @@ export async function removeMarketMember(marketId, userId) {
     .eq("market_id", marketId)
     .eq("user_id", userId);
   if (error) throw new Error("[supabase] removeMarketMember failed: " + error.message);
+}
+// ── Portfolio persistence (Day 8) ──────────────────────────────────────────────
+// Functions for reading and writing portfolio state to/from the database.
+// Replaces the in-memory React state that existed prior to Day 8.
+
+/**
+ * Fetch the current player's portfolio state for a given market.
+ * Returns { cashBalance, dividendsEarned, holdings: { teamId: shares } }.
+ */
+export async function getPortfolioState(marketId) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const [memberResult, holdingsResult] = await Promise.all([
+    supabase
+      .from("market_members")
+      .select("cash_balance, dividends_earned")
+      .eq("market_id", marketId)
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("holdings")
+      .select("team_id, shares")
+      .eq("market_id", marketId)
+      .eq("user_id", user.id)
+      .gt("shares", 0),
+  ]);
+
+  if (memberResult.error)   throw new Error("[supabase] getPortfolioState (member): "   + memberResult.error.message);
+  if (holdingsResult.error) throw new Error("[supabase] getPortfolioState (holdings): " + holdingsResult.error.message);
+
+  if (!memberResult.data) return { cashBalance: 0, dividendsEarned: 0, holdings: {} };
+
+  const holdings = {};
+  (holdingsResult.data ?? []).forEach((h) => { holdings[h.team_id] = h.shares; });
+
+  return {
+    cashBalance:     Number(memberResult.data.cash_balance),
+    dividendsEarned: Number(memberResult.data.dividends_earned),
+    holdings,
+  };
+}
+
+/**
+ * Record a share purchase: upsert holding (+1), deduct cash, log transaction.
+ * Returns { newShares, newCashBalance }.
+ */
+export async function buyShareDB(marketId, teamId, pricePerShare, week) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: existing } = await supabase
+    .from("holdings")
+    .select("id, shares")
+    .eq("market_id", marketId).eq("user_id", user.id).eq("team_id", teamId)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase
+      .from("holdings")
+      .update({ shares: existing.shares + 1, updated_at: new Date().toISOString() })
+      .eq("id", existing.id);
+    if (error) throw new Error("[supabase] buyShareDB (update holding): " + error.message);
+  } else {
+    const { error } = await supabase
+      .from("holdings")
+      .insert({ market_id: marketId, user_id: user.id, team_id: teamId, shares: 1 });
+    if (error) throw new Error("[supabase] buyShareDB (insert holding): " + error.message);
+  }
+
+  const { data: member, error: readErr } = await supabase
+    .from("market_members")
+    .select("cash_balance")
+    .eq("market_id", marketId).eq("user_id", user.id)
+    .single();
+  if (readErr) throw new Error("[supabase] buyShareDB (read cash): " + readErr.message);
+
+  const newCash = Math.round((Number(member.cash_balance) - pricePerShare) * 100) / 100;
+  const { error: cashErr } = await supabase
+    .from("market_members")
+    .update({ cash_balance: newCash })
+    .eq("market_id", marketId).eq("user_id", user.id);
+  if (cashErr) throw new Error("[supabase] buyShareDB (update cash): " + cashErr.message);
+
+  const { error: txErr } = await supabase.from("transactions").insert({
+    market_id: marketId, user_id: user.id, week,
+    action: "buy", team_id: teamId, shares: 1,
+    price_per_share: pricePerShare, total_value: pricePerShare, source: "queue",
+  });
+  if (txErr) console.warn("[supabase] buyShareDB (transaction log):", txErr.message);
+
+  return { newShares: (existing?.shares ?? 0) + 1, newCashBalance: newCash };
+}
+
+/**
+ * Record a share sale: decrement holding, add cash, log transaction.
+ * Returns { newShares, newCashBalance }.
+ */
+export async function sellShareDB(marketId, teamId, pricePerShare, week) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: existing, error: holdErr } = await supabase
+    .from("holdings")
+    .select("id, shares")
+    .eq("market_id", marketId).eq("user_id", user.id).eq("team_id", teamId)
+    .single();
+  if (holdErr || !existing || existing.shares === 0)
+    throw new Error("[supabase] sellShareDB: No shares to sell for " + teamId);
+
+  const { error: updateErr } = await supabase
+    .from("holdings")
+    .update({ shares: existing.shares - 1, updated_at: new Date().toISOString() })
+    .eq("id", existing.id);
+  if (updateErr) throw new Error("[supabase] sellShareDB (update holding): " + updateErr.message);
+
+  const { data: member, error: readErr } = await supabase
+    .from("market_members")
+    .select("cash_balance")
+    .eq("market_id", marketId).eq("user_id", user.id)
+    .single();
+  if (readErr) throw new Error("[supabase] sellShareDB (read cash): " + readErr.message);
+
+  const newCash = Math.round((Number(member.cash_balance) + pricePerShare) * 100) / 100;
+  const { error: cashErr } = await supabase
+    .from("market_members")
+    .update({ cash_balance: newCash })
+    .eq("market_id", marketId).eq("user_id", user.id);
+  if (cashErr) throw new Error("[supabase] sellShareDB (update cash): " + cashErr.message);
+
+  const { error: txErr } = await supabase.from("transactions").insert({
+    market_id: marketId, user_id: user.id, week,
+    action: "sell", team_id: teamId, shares: 1,
+    price_per_share: pricePerShare, total_value: pricePerShare, source: "queue",
+  });
+  if (txErr) console.warn("[supabase] sellShareDB (transaction log):", txErr.message);
+
+  return { newShares: existing.shares - 1, newCashBalance: newCash };
+}
+
+/**
+ * Fetch all transactions for the current user in a market (newest first).
+ */
+export async function getTransactionHistory(marketId) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("market_id", marketId)
+    .eq("user_id", user.id)
+    .order("executed_at", { ascending: false });
+  if (error) throw new Error("[supabase] getTransactionHistory: " + error.message);
+  return data ?? [];
+}
+
+/**
+ * Fetch all dividend payouts for the current user in a market (newest first).
+ */
+export async function getDividendHistory(marketId) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data, error } = await supabase
+    .from("dividend_payouts")
+    .select("*")
+    .eq("market_id", marketId)
+    .eq("user_id", user.id)
+    .order("paid_at", { ascending: false });
+  if (error) throw new Error("[supabase] getDividendHistory: " + error.message);
+  return data ?? [];
+}
+
+/**
+ * Fetch portfolio snapshots for the current user in a market (oldest first).
+ */
+export async function getPortfolioSnapshots(marketId) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data, error } = await supabase
+    .from("portfolio_snapshots")
+    .select("week, total_value, cash_balance, created_at")
+    .eq("market_id", marketId)
+    .eq("user_id", user.id)
+    .order("week", { ascending: true });
+  if (error) throw new Error("[supabase] getPortfolioSnapshots: " + error.message);
+  return data ?? [];
+}
+
+/**
+ * Upsert a portfolio value snapshot for a given week (written on advanceWeek).
+ */
+export async function savePortfolioSnapshot(marketId, week, totalValue, cashBalance) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  const { error } = await supabase
+    .from("portfolio_snapshots")
+    .upsert(
+      {
+        market_id:    marketId,
+        user_id:      user.id,
+        week,
+        total_value:  Math.round(totalValue  * 100) / 100,
+        cash_balance: Math.round(cashBalance * 100) / 100,
+      },
+      { onConflict: "market_id,user_id,week" }
+    );
+  if (error) throw new Error("[supabase] savePortfolioSnapshot: " + error.message);
+}
+
+/**
+ * Insert dividend payout rows for a week's dividend events.
+ * dividendEntries: [{ teamId, eventKey, eventLabel, sharesOwned, baseValue, multiplier, payout }]
+ */
+export async function saveDividendPayouts(marketId, week, dividendEntries) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  if (!dividendEntries.length) return;
+
+  const rows = dividendEntries.map((d) => ({
+    market_id:    marketId,
+    user_id:      user.id,
+    week,
+    team_id:      d.teamId,
+    event_key:    d.eventKey,
+    event_label:  d.eventLabel,
+    shares_owned: d.sharesOwned,
+    base_value:   d.baseValue,
+    multiplier:   d.multiplier,
+    payout:       Math.round(d.payout * 100) / 100,
+  }));
+
+  const { error } = await supabase.from("dividend_payouts").insert(rows);
+  if (error) throw new Error("[supabase] saveDividendPayouts: " + error.message);
+}
+
+/**
+ * Update cash_balance and dividends_earned for the current user in a market.
+ * Called after advanceWeek computes and saves dividend payouts.
+ */
+export async function updateMemberFinancials(marketId, newCashBalance, additionalDividends) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: member, error: readErr } = await supabase
+    .from("market_members")
+    .select("dividends_earned")
+    .eq("market_id", marketId).eq("user_id", user.id)
+    .single();
+  if (readErr) throw new Error("[supabase] updateMemberFinancials (read): " + readErr.message);
+
+  const { error } = await supabase
+    .from("market_members")
+    .update({
+      cash_balance:     Math.round(newCashBalance * 100) / 100,
+      dividends_earned: Math.round((Number(member.dividends_earned) + additionalDividends) * 100) / 100,
+    })
+    .eq("market_id", marketId).eq("user_id", user.id);
+  if (error) throw new Error("[supabase] updateMemberFinancials (update): " + error.message);
+}
+
+/**
+ * Advance the market's current_week counter (admin only — enforced by RLS).
+ */
+export async function advanceMarketWeek(marketId, newWeek) {
+  const { error } = await supabase
+    .from("markets")
+    .update({ current_week: newWeek })
+    .eq("id", marketId);
+  if (error) throw new Error("[supabase] advanceMarketWeek: " + error.message);
+}
+
+/**
+ * Check whether the current user has is_admin = true in the profiles table.
+ * Used by AdminPage to gate the admin UI (Day 8: fixes the old users-table query).
+ */
+export async function getIsAdmin() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { data } = await supabase
+    .from("profiles")
+    .select("is_admin")
+    .eq("id", user.id)
+    .maybeSingle();
+  return data?.is_admin === true;
 }

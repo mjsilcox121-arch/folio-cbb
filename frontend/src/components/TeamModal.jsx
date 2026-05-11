@@ -36,15 +36,15 @@ function UpcomingGameRow({ game, weeks }) {
 }
 
 // ── Buy/Sell action bar ────────────────────────────────────────────────────────
-function ModalActions({ teamDetail, week, selectedTeam, portfolio, buyingPower, buyShare, sellShare }) {
+function ModalActions({ teamDetail, week, selectedTeam, portfolio, buyingPower, tradePending, buyShare, sellShare }) {
   const adjEM       = teamDetail.weeklyAdjEM[week];
   const totalShares = calcShares(adjEM);
   const ownedNow    = portfolio[selectedTeam] || 0;
   const atMax       = ownedNow >= totalShares;
   const priceNow    = Math.round(sharePrice(adjEM) * 100) / 100;
   const cantAfford  = buyingPower < priceNow - 0.001;
-  const buyDisabled = atMax || cantAfford;
-  const buyLabel    = atMax ? `All ${totalShares} shares owned` : `Buy — $${priceNow.toFixed(2)}`;
+  const buyDisabled = tradePending || atMax || cantAfford;
+  const buyLabel    = tradePending ? "Processing…" : atMax ? `All ${totalShares} shares owned` : `Buy — $${priceNow.toFixed(2)}`;
   return (
     <div className="modal-actions">
       <button
@@ -55,15 +55,15 @@ function ModalActions({ teamDetail, week, selectedTeam, portfolio, buyingPower, 
       >
         {buyLabel}
       </button>
-      <button className="sell-btn large" onClick={() => sellShare(selectedTeam)} disabled={!ownedNow}>
-        Sell share
+      <button className="sell-btn large" onClick={() => sellShare(selectedTeam)} disabled={tradePending || !ownedNow}>
+        {tradePending ? "Processing…" : "Sell share"}
       </button>
     </div>
   );
 }
 
 // ── Main export: full modal overlay ───────────────────────────────────────────
-export default function TeamModal({ selectedTeam, teamDetail, week, weeks, portfolio, buyingPower, buyShare, sellShare, onClose }) {
+export default function TeamModal({ selectedTeam, teamDetail, week, weeks, portfolio, buyingPower, tradePending, buyShare, sellShare, onClose }) {
   if (!selectedTeam || !teamDetail) return null;
 
   return (
@@ -143,6 +143,7 @@ export default function TeamModal({ selectedTeam, teamDetail, week, weeks, portf
           selectedTeam={selectedTeam}
           portfolio={portfolio}
           buyingPower={buyingPower}
+          tradePending={tradePending}
           buyShare={buyShare}
           sellShare={sellShare}
         />

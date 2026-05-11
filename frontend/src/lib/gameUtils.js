@@ -3,13 +3,15 @@
 
 // ── Share / price formulas ────────────────────────────────────────────────────
 // These must remain consistent everywhere — changing them changes game balance.
-export function calcShares(adjEM) {
-  if (!adjEM || adjEM <= 0) return 1;
-  return Math.floor(adjEM / 10) + 1;
+// Parameter renamed from adjEM → efficiencyRating (Day 8) for source-agnostic naming.
+// Callers pass the value positionally, so no call-site changes are required.
+export function calcShares(efficiencyRating) {
+  if (!efficiencyRating || efficiencyRating <= 0) return 1;
+  return Math.floor(efficiencyRating / 10) + 1;
 }
 
-export function sharePrice(adjEM) {
-  return adjEM / calcShares(adjEM);
+export function sharePrice(efficiencyRating) {
+  return efficiencyRating / calcShares(efficiencyRating);
 }
 
 // ── Team color palette ────────────────────────────────────────────────────────

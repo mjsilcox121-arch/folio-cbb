@@ -5,7 +5,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
 import {
   createMarket,
   getAllMarkets,
@@ -14,6 +13,7 @@ import {
   addUserToMarketByEmail,
   getMarketMembers,
   removeMarketMember,
+  getIsAdmin,
 } from "../lib/supabase";
 
 const STATUS_NEXT = { waiting: "draft", draft: "active", active: "complete" };
@@ -65,9 +65,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("users").select("is_admin").eq("id", user.id).single()
-      .then(({ data }) => setIsAdmin(data?.is_admin === true))
-      .catch(() => setIsAdmin(false));
+    getIsAdmin().then((result) => setIsAdmin(result)).catch(() => setIsAdmin(false));
   }, [user]);
 
   const loadMarkets = useCallback(async () => {

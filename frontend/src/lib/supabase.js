@@ -581,6 +581,37 @@ export async function getLeaderboard(marketId) {
 }
 
 /**
+ * Fetch all executed and failed queue requests for a market, across all players.
+ * Requires the Day 14 RLS policy — co-members can read executed/failed rows.
+ * Returns rows sorted by week DESC, executed_at ASC (execution order within week).
+ * Each row includes playerEmail resolved from the profiles table.
+ */
+export async function getTransactionLog(marketId) {
+  const { data, error } = await supabase
+    .from("queue_requests")
+    .select("id, user_id, week, action, team_id, status, failure_reason, executed_at, price_per_share")
+    .eq("market_id", marketId)
+    .in("status", ["executed", "failed"])
+    .order("week", { ascending: false })
+    .order("executed_at", { ascending: true });
+  if (error) throw new Error("[supabase] getTransactionLog: " + error.message);
+  const rows = data ?? [];
+
+  // Resolve player emails from profiles
+  const userIds = [...new Set(rows.map((r) => r.user_id))];
+  const emailMap = {};
+  if (userIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, username")
+      .in("id", userIds);
+    (profiles ?? []).forEach((p) => { emailMap[p.id] = p.username; });
+  }
+
+  return rows.map((r) => ({ ...r, playerEmail: emailMap[r.user_id] ?? "Player" }));
+}
+
+/**
  * Check whether the current user has is_admin = true in the profiles table.
  * Used by AdminPage to gate the admin UI (Day 8: fixes the old users-table query).
  */

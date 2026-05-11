@@ -204,12 +204,13 @@
 - [ ] Confirm Account A cannot see Account B's pending queue before execution
 - [ ] After execution, confirm both accounts can see the results in the transaction log
 
-### Day 14 — Transaction Log Page
-- [ ] Build the `/log` page — visible to all players in the market
-- [ ] Organized by week (most recent first)
-- [ ] Each week shows every request that was executed, in execution order:
+### Day 14 — Transaction Log Page ✅ Completed May 11, 2026
+- [x] Build the `/log` page — visible to all players in the market
+- [x] Organized by week (most recent first)
+- [x] Each week shows every request that was executed, in execution order:
   - Player name, action (buy/sell), team, result (✅ success / ❌ failed), failure reason if failed
-- [ ] Player's own queue before execution remains private (not shown here until after Execute Queue runs)
+- [x] Player's own queue before execution remains private (not shown here until after Execute Queue runs)
+- [x] Implementation: new RLS policy `"queue_requests: co-members can read results"` (executed/failed rows only); `getTransactionLog()` in supabase.js; `LogPage.jsx` with week grouping and "you" tag; `day14_transaction_log.sql` migration
 - [ ] Test with at least two user accounts to confirm privacy rules hold
 
 ---

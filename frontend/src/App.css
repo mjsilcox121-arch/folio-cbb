@@ -378,3 +378,29 @@ tfoot .totals-row td { border-top: 2px solid #e8e4dc; background: #f7f5f0; paddi
   font-family: inherit;
 }
 .rule-input:focus { border-color: #1D9E75; outline: none; }
+
+/* ── Transaction Log page (Day 14) ──────────────────────────────── */
+.log-page-label { font-size: 14px; font-weight: 600; font-family: 'Arial', sans-serif; color: #666; }
+.log-market-badge { font-size: 12px; background: #f0ece4; border: 1px solid #e0dbd0; color: #555; padding: 2px 10px; border-radius: 20px; font-family: 'Arial', sans-serif; font-weight: 600; }
+.log-loading { font-size: 14px; color: #aaa; font-family: 'Arial', sans-serif; padding: 2rem; text-align: center; }
+.log-error { background: #2e1a1a; border: 1px solid #4a2a2a; color: #cf6f6f; border-radius: 8px; padding: 0.75rem 1rem; font-family: 'Arial', sans-serif; font-size: 13px; margin-bottom: 1rem; }
+.log-empty { background: #fff; border: 1px solid #e8e4dc; border-radius: 12px; padding: 2rem; text-align: center; color: #aaa; font-family: 'Arial', sans-serif; font-size: 14px; }
+.log-link-btn { background: none; border: none; color: #1D9E75; font-size: 14px; font-family: 'Arial', sans-serif; cursor: pointer; text-decoration: underline; padding: 0; }
+.log-week-group { margin-bottom: 1.5rem; }
+.log-week-header { font-size: 13px; font-weight: 700; font-family: 'Arial', sans-serif; color: #0d1b2a; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+.log-table-wrap { background: #fff; border: 1px solid #e8e4dc; border-radius: 12px; overflow: hidden; }
+.log-table { width: 100%; border-collapse: collapse; font-family: 'Arial', sans-serif; font-size: 13px; }
+.log-table th { background: #f7f5f0; text-align: left; padding: 9px 14px; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.4px; border-bottom: 1px solid #e8e4dc; }
+.log-table td { padding: 9px 14px; border-top: 1px solid #f0ece4; color: #1a1a1a; vertical-align: middle; }
+.log-table tr.log-row-failed td { background: #fdf8f6; }
+.log-table tr:hover td { background: #f7f5f0; }
+.log-table tr.log-row-failed:hover td { background: #faf2ee; }
+.log-player { color: #0d1b2a; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+.log-you-tag { background: #EAF3DE; border: 1px solid #C0DD97; color: #3B6D11; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 20px; letter-spacing: 0.3px; flex-shrink: 0; }
+.log-action { font-weight: 600; }
+.log-action-buy  { color: #0F6E56; }
+.log-action-sell { color: #993C1D; }
+.log-team { color: #0d1b2a; }
+.log-price { color: #555; font-variant-numeric: tabular-nums; }
+.log-success { color: #0F6E56; font-weight: 600; }
+.log-fail { color: #993C1D; font-weight: 600; }

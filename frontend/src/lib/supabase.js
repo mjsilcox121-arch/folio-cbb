@@ -462,19 +462,35 @@ export async function advanceMarketWeek(marketId, newWeek) {
 
 // ── Queue requests (Day 11) ────────────────────────────────────────────────
 
+const QUEUE_ERROR_MESSAGES = {
+  not_enough_cash:    "Not enough cash (your other pending buys are reserving the rest)",
+  shares_unavailable: "No shares available — all shares are owned or queued by other players",
+  no_shares_to_sell:  "You don't own any shares in this team",
+  queue_full:         "Queue full — you already have 10 pending requests this week",
+  not_a_member:       "You are not a member of this market",
+  not_authenticated:  "Not signed in",
+};
+
 /**
- * Submit a buy or sell request to the current week's queue.
- * Returns the newly created queue_request row.
+ * Submit a buy or sell request via the server-side validated RPC.
+ * pricePerShare and totalShares are client-computed from season data and
+ * sent to the server for cash-sufficiency and share-availability checks.
  */
-export async function submitQueueRequest(marketId, week, action, teamId) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-  const { data, error } = await supabase
-    .from("queue_requests")
-    .insert({ market_id: marketId, user_id: user.id, week, action, team_id: teamId })
-    .select()
-    .single();
-  if (error) throw new Error("[supabase] submitQueueRequest: " + error.message);
+export async function submitQueueRequest(marketId, week, action, teamId, pricePerShare, totalShares) {
+  const { data, error } = await supabase.rpc("submit_queue_request_validated", {
+    p_market_id:       marketId,
+    p_week:            week,
+    p_action:          action,
+    p_team_id:         teamId,
+    p_price_per_share: pricePerShare,
+    p_total_shares:    totalShares ?? 0,
+  });
+  if (error) {
+    // Supabase surfaces RAISE EXCEPTION messages in error.message
+    const code = error.message?.trim();
+    const friendly = QUEUE_ERROR_MESSAGES[code] ?? error.message;
+    throw new Error(friendly);
+  }
   return data;
 }
 

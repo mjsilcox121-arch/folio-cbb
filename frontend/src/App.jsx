@@ -440,14 +440,16 @@ function GameLayout() {
 
   async function handleQueueBuy(teamName) {
     if (!market?.id || queueSubmitting) return;
+    const team = teamsThisWeek.find((t) => t.team === teamName);
+    if (!team) return;
     setQueueSubmitting(true);
     setQueueError("");
     try {
-      await submitQueueRequest(market.id, week, "buy", teamName);
+      await submitQueueRequest(market.id, week, "buy", teamName, team.price, team.shares);
       await loadQueueFromDB(market.id, week);
     } catch (err) {
       console.error("[handleQueueBuy]", err.message);
-      setQueueError("Could not add buy request — " + err.message);
+      setQueueError(err.message);
     } finally {
       setQueueSubmitting(false);
     }
@@ -455,14 +457,16 @@ function GameLayout() {
 
   async function handleQueueSell(teamName) {
     if (!market?.id || queueSubmitting) return;
+    const team = teamsThisWeek.find((t) => t.team === teamName);
+    if (!team) return;
     setQueueSubmitting(true);
     setQueueError("");
     try {
-      await submitQueueRequest(market.id, week, "sell", teamName);
+      await submitQueueRequest(market.id, week, "sell", teamName, team.price, team.shares);
       await loadQueueFromDB(market.id, week);
     } catch (err) {
       console.error("[handleQueueSell]", err.message);
-      setQueueError("Could not add sell request — " + err.message);
+      setQueueError(err.message);
     } finally {
       setQueueSubmitting(false);
     }

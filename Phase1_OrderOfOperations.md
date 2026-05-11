@@ -169,13 +169,15 @@
 - [x] Show queue status: Pending / Executed / Failed
 - [x] Migration file: `day11_queue.sql` — run in Supabase SQL Editor before testing
 
-### Day 12 — Queue Validation Logic
+### Day 12 — Queue Validation Logic ✅ Completed May 11, 2026
 *Server-side — this cannot live only in the UI.*
-- [ ] When a request is added, validate immediately:
-  - [ ] Does the user have enough cash (accounting for other pending buy requests)?
-  - [ ] Are shares available for this team (accounting for other pending buy requests in the same market)?
-- [ ] If invalid at submission time, reject with a clear reason rather than letting it sit as pending
-- [ ] Write a Supabase Edge Function (or a server-side function) to handle queue submission — do not trust client-side validation alone
+- [x] When a request is added, validate immediately:
+  - [x] Does the user have enough cash (accounting for other pending buy requests)?
+  - [x] Are shares available for this team (accounting for other pending buy requests in the same market)?
+- [x] If invalid at submission time, reject with a clear reason rather than letting it sit as pending
+- [x] Write a Supabase Edge Function (or a server-side function) to handle queue submission — do not trust client-side validation alone
+- [x] Implementation: PostgreSQL RPC `submit_queue_request_validated()` (SECURITY DEFINER, atomic check+insert); client calls `supabase.rpc()` instead of direct INSERT
+- [x] Migration file: `day12_queue_validation.sql` — run in Supabase SQL Editor before testing
 
 ### Day 13 — Execute Queue Logic
 *The core game mechanic for weekly play.*

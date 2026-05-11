@@ -35,35 +35,70 @@ function UpcomingGameRow({ game, weeks }) {
   );
 }
 
-// ── Buy/Sell action bar ────────────────────────────────────────────────────────
-function ModalActions({ teamDetail, week, selectedTeam, portfolio, buyingPower, buyShare, sellShare }) {
+const MAX_QUEUE = 10;
+
+// ── Queue-based action bar ─────────────────────────────────────────────────────
+function ModalActions({ teamDetail, week, selectedTeam, portfolio, buyingPower, queueRequests, submitting, onQueueBuy, onQueueSell, onCancelRequest }) {
   const adjEM       = teamDetail.weeklyAdjEM[week];
   const totalShares = calcShares(adjEM);
   const ownedNow    = portfolio[selectedTeam] || 0;
   const atMax       = ownedNow >= totalShares;
   const priceNow    = Math.round(sharePrice(adjEM) * 100) / 100;
+
+  const pendingRequests = queueRequests.filter((r) => r.status === "pending");
+  const pendingCount    = pendingRequests.length;
+  const atQueueLimit    = pendingCount >= MAX_QUEUE;
+
+  // Pending request for this team specifically
+  const teamPending = pendingRequests.find((r) => r.team_id === selectedTeam);
+
   const cantAfford  = buyingPower < priceNow - 0.001;
-  const buyDisabled = atMax || cantAfford;
-  const buyLabel    = atMax ? `All ${totalShares} shares owned` : `Buy — $${priceNow.toFixed(2)}`;
+  const buyDisabled = submitting || atMax || cantAfford || atQueueLimit;
+  const sellDisabled = submitting || !ownedNow || atQueueLimit;
+
   return (
-    <div className="modal-actions">
-      <button
-        className="buy-btn large"
-        onClick={() => buyShare(selectedTeam)}
-        disabled={buyDisabled}
-        title={atMax ? `All ${totalShares} shares owned` : undefined}
-      >
-        {buyLabel}
-      </button>
-      <button className="sell-btn large" onClick={() => sellShare(selectedTeam)} disabled={!ownedNow}>
-        Sell share
-      </button>
+    <div className="modal-actions-wrap">
+      <div className="queue-limit-bar">
+        <span className={`queue-count-badge ${atQueueLimit ? "queue-count-full" : ""}`}>
+          {pendingCount} / {MAX_QUEUE} requests this week
+        </span>
+        {atQueueLimit && <span className="queue-limit-msg">Queue full — cancel a request to add another</span>}
+      </div>
+
+      {teamPending ? (
+        <div className="modal-pending-row">
+          <span className={`action-pill ${teamPending.action}`}>{teamPending.action.toUpperCase()}</span>
+          <span className="modal-pending-label">queued for this team</span>
+          <button className="queue-cancel-btn" onClick={() => onCancelRequest(teamPending.id)} disabled={submitting}>
+            Cancel request
+          </button>
+        </div>
+      ) : (
+        <div className="modal-actions">
+          <button
+            className="buy-btn large"
+            onClick={() => onQueueBuy(selectedTeam)}
+            disabled={buyDisabled}
+            title={atMax ? `All ${totalShares} shares owned` : atQueueLimit ? "Queue full" : undefined}
+          >
+            {submitting ? "Adding…" : atMax ? `All ${totalShares} shares owned` : `Queue Buy — $${priceNow.toFixed(2)}`}
+          </button>
+          <button
+            className="sell-btn large"
+            onClick={() => onQueueSell(selectedTeam)}
+            disabled={sellDisabled}
+            title={atQueueLimit ? "Queue full" : undefined}
+          >
+            {submitting ? "Adding…" : "Queue Sell"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Main export: full modal overlay ───────────────────────────────────────────
-export default function TeamModal({ selectedTeam, teamDetail, week, weeks, portfolio, buyingPower, buyShare, sellShare, onClose }) {
+export default function TeamModal({ selectedTeam, teamDetail, week, weeks, portfolio, buyingPower, queueRequests, submitting, onQueueBuy, onQueueSell, onCancelRequest, onClose }) {
   if (!selectedTeam || !teamDetail) return null;
 
   return (
@@ -143,8 +178,11 @@ export default function TeamModal({ selectedTeam, teamDetail, week, weeks, portf
           selectedTeam={selectedTeam}
           portfolio={portfolio}
           buyingPower={buyingPower}
-          buyShare={buyShare}
-          sellShare={sellShare}
+          queueRequests={queueRequests}
+          submitting={submitting}
+          onQueueBuy={onQueueBuy}
+          onQueueSell={onQueueSell}
+          onCancelRequest={onCancelRequest}
         />
       </div>
     </div>

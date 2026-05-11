@@ -460,6 +460,54 @@ export async function advanceMarketWeek(marketId, newWeek) {
   if (error) throw new Error("[supabase] advanceMarketWeek: " + error.message);
 }
 
+// ── Queue requests (Day 11) ────────────────────────────────────────────────
+
+/**
+ * Submit a buy or sell request to the current week's queue.
+ * Returns the newly created queue_request row.
+ */
+export async function submitQueueRequest(marketId, week, action, teamId) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  const { data, error } = await supabase
+    .from("queue_requests")
+    .insert({ market_id: marketId, user_id: user.id, week, action, team_id: teamId })
+    .select()
+    .single();
+  if (error) throw new Error("[supabase] submitQueueRequest: " + error.message);
+  return data;
+}
+
+/**
+ * Fetch the current user's queue requests for a specific week (oldest first).
+ * Returns all statuses so the UI can show pending + history.
+ */
+export async function getMyQueueRequests(marketId, week) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data, error } = await supabase
+    .from("queue_requests")
+    .select("*")
+    .eq("market_id", marketId)
+    .eq("user_id", user.id)
+    .eq("week", week)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error("[supabase] getMyQueueRequests: " + error.message);
+  return data ?? [];
+}
+
+/**
+ * Delete a pending queue request. RLS prevents cancelling executed/failed rows.
+ */
+export async function cancelQueueRequest(requestId) {
+  const { error } = await supabase
+    .from("queue_requests")
+    .delete()
+    .eq("id", requestId);
+  if (error) throw new Error("[supabase] cancelQueueRequest: " + error.message);
+}
+
+
 /**
  * Fetch all players in a market ranked by portfolio value.
  * Returns [{ userId, email, cashBalance, totalValue }] sorted desc by totalValue.

@@ -158,15 +158,16 @@
 
 ## 📋 WEEK 3 — Queue System (Days 11–14)
 
-### Day 11 — Queue Submission UI
+### Day 11 — Queue Submission UI ✅ Completed May 11, 2026
 *Replace the instant buy/sell in `ModalActions` with a queue request.*
-- [ ] Change `ModalActions` (now inside `TeamModal.jsx`): "Buy" and "Sell" buttons add a request to the queue instead of immediately executing
-- [ ] Show the user their current pending queue (private — only visible to them)
-- [ ] Display request count (e.g., "3 of 10 requests used this week")
-- [ ] Prevent more than 10 requests per week — disable the add button and show a message
-- [ ] Each request: 1 share max (buy 1 or sell 1 — already how the current app works)
-- [ ] Allow users to cancel a pending request before the queue executes
-- [ ] Show queue status: Pending / Executed / Failed
+- [x] Change `ModalActions` (now inside `TeamModal.jsx`): "Buy" and "Sell" buttons add a request to the queue instead of immediately executing
+- [x] Show the user their current pending queue (private — only visible to them)
+- [x] Display request count (e.g., "3 of 10 requests used this week")
+- [x] Prevent more than 10 requests per week — disable the add button and show a message
+- [x] Each request: 1 share max (buy 1 or sell 1 — already how the current app works)
+- [x] Allow users to cancel a pending request before the queue executes
+- [x] Show queue status: Pending / Executed / Failed
+- [x] Migration file: `day11_queue.sql` — run in Supabase SQL Editor before testing
 
 ### Day 12 — Queue Validation Logic
 *Server-side — this cannot live only in the UI.*

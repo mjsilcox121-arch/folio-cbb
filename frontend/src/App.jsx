@@ -13,6 +13,7 @@ import { useMarket } from "./context/MarketContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import MarketTable from "./components/MarketTable";
 import Leaderboard from "./components/Leaderboard";
+import QueuePanel from "./components/QueuePanel";
 import PortfolioView from "./components/PortfolioView";
 import TeamModal from "./components/TeamModal";
 import SettingsModal from "./components/SettingsModal";
@@ -33,6 +34,9 @@ import {
   updateMemberFinancials,
   advanceMarketWeek,
   getLeaderboard,
+  submitQueueRequest,
+  getMyQueueRequests,
+  cancelQueueRequest,
 } from "./lib/supabase";
 import "./App.css";
 
@@ -79,8 +83,13 @@ function GameLayout() {
   const [tradeError, setTradeError]               = useState("");
 
   // ── Leaderboard (Day 10) ───────────────────────────────────────────────────
-  const [leaderboard, setLeaderboard]             = useState([]);
+  const [leaderboard, setLeaderboard]               = useState([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+
+  // ── Queue (Day 11) ─────────────────────────────────────────────────────────
+  const [queueRequests, setQueueRequests]           = useState([]);
+  const [queueSubmitting, setQueueSubmitting]       = useState(false);
+  const [queueError, setQueueError]                 = useState("");
 
   // ── UI state ───────────────────────────────────────────────────────────────
   const [search, setSearch]             = useState("");
@@ -160,6 +169,7 @@ function GameLayout() {
 
     loadPortfolioFromDB(market.id, startBudget);
     loadLeaderboardFromDB(market.id);
+    loadQueueFromDB(market.id, market.current_week ?? 0);
   }, [market?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Derived game data ──────────────────────────────────────────────────────
@@ -404,6 +414,7 @@ function GameLayout() {
         await Promise.all(dbWrites);
         refreshMarkets(); // update market.current_week in context
         loadLeaderboardFromDB(market.id);
+        loadQueueFromDB(market.id, nextWeek); // new week = empty queue
       } catch (err) {
         console.error("[advanceWeek] DB write failed:", err.message);
         // Non-fatal — local state still advances
@@ -416,6 +427,60 @@ function GameLayout() {
     setDividendLog((l) => [...uiDivLogs.reverse(), ...l]);
     setPortfolioHistory((h) => [...h, newTotalValue]);
     setWeek(nextWeek);
+  }
+
+  async function loadQueueFromDB(marketId, currentWeek) {
+    try {
+      const requests = await getMyQueueRequests(marketId, currentWeek);
+      setQueueRequests(requests);
+    } catch (err) {
+      console.warn("[GameLayout] loadQueue failed:", err.message);
+    }
+  }
+
+  async function handleQueueBuy(teamName) {
+    if (!market?.id || queueSubmitting) return;
+    setQueueSubmitting(true);
+    setQueueError("");
+    try {
+      await submitQueueRequest(market.id, week, "buy", teamName);
+      await loadQueueFromDB(market.id, week);
+    } catch (err) {
+      console.error("[handleQueueBuy]", err.message);
+      setQueueError("Could not add buy request — " + err.message);
+    } finally {
+      setQueueSubmitting(false);
+    }
+  }
+
+  async function handleQueueSell(teamName) {
+    if (!market?.id || queueSubmitting) return;
+    setQueueSubmitting(true);
+    setQueueError("");
+    try {
+      await submitQueueRequest(market.id, week, "sell", teamName);
+      await loadQueueFromDB(market.id, week);
+    } catch (err) {
+      console.error("[handleQueueSell]", err.message);
+      setQueueError("Could not add sell request — " + err.message);
+    } finally {
+      setQueueSubmitting(false);
+    }
+  }
+
+  async function handleCancelRequest(requestId) {
+    if (!market?.id || queueSubmitting) return;
+    setQueueSubmitting(true);
+    setQueueError("");
+    try {
+      await cancelQueueRequest(requestId);
+      await loadQueueFromDB(market.id, week);
+    } catch (err) {
+      console.error("[handleCancelRequest]", err.message);
+      setQueueError("Could not cancel request — " + err.message);
+    } finally {
+      setQueueSubmitting(false);
+    }
   }
 
   async function loadLeaderboardFromDB(marketId) {
@@ -435,6 +500,7 @@ function GameLayout() {
     if (!market?.id) return;
     loadPortfolioFromDB(market.id, startingBudget);
     loadLeaderboardFromDB(market.id);
+    loadQueueFromDB(market.id, week);
   }
 
   function handleSort(col) {
@@ -507,6 +573,13 @@ function GameLayout() {
         <div style={{ background: "#2e1a1a", border: "1px solid #4a2a2a", color: "#cf6f6f", borderRadius: "6px", padding: "0.5rem 0.85rem", fontSize: "0.85rem", marginBottom: "1rem", display: "flex", alignItems: "center", gap: 8 }}>
           {tradeError}
           <button style={{ color: "#cf6f6f", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }} onClick={() => setTradeError("")}>Dismiss</button>
+        </div>
+      )}
+
+      {queueError && (
+        <div style={{ background: "#2e1a1a", border: "1px solid #4a2a2a", color: "#cf6f6f", borderRadius: "6px", padding: "0.5rem 0.85rem", fontSize: "0.85rem", marginBottom: "1rem", display: "flex", alignItems: "center", gap: 8 }}>
+          {queueError}
+          <button style={{ color: "#cf6f6f", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }} onClick={() => setQueueError("")}>Dismiss</button>
         </div>
       )}
 
@@ -607,6 +680,12 @@ function GameLayout() {
               currentUserId={user?.id}
               loading={leaderboardLoading}
             />
+            <QueuePanel
+              requests={queueRequests}
+              weekLabel={WEEKS[week] ?? `Week ${week}`}
+              onCancel={handleCancelRequest}
+              submitting={queueSubmitting}
+            />
             <MarketTable
               filteredTeams={filteredTeams}
               totalTeams={TEAM_HISTORY.length}
@@ -669,9 +748,11 @@ function GameLayout() {
         weeks={WEEKS}
         portfolio={portfolio}
         buyingPower={buyingPower}
-        tradePending={tradePending}
-        buyShare={buyShare}
-        sellShare={sellShare}
+        queueRequests={queueRequests}
+        submitting={queueSubmitting}
+        onQueueBuy={handleQueueBuy}
+        onQueueSell={handleQueueSell}
+        onCancelRequest={handleCancelRequest}
         onClose={() => setSelectedTeam(null)}
       />
 

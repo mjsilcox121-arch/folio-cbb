@@ -461,6 +461,45 @@ export async function advanceMarketWeek(marketId, newWeek) {
 }
 
 /**
+ * Fetch all players in a market ranked by portfolio value.
+ * Returns [{ userId, email, cashBalance, totalValue }] sorted desc by totalValue.
+ * totalValue comes from the latest portfolio_snapshot if available, otherwise falls
+ * back to cash_balance (player hasn't advanced a week yet).
+ */
+export async function getLeaderboard(marketId) {
+  const [membersResult, snapshotsResult] = await Promise.all([
+    supabase
+      .from("market_members")
+      .select("user_id, cash_balance, profiles(username)")
+      .eq("market_id", marketId),
+    supabase
+      .from("portfolio_snapshots")
+      .select("user_id, week, total_value")
+      .eq("market_id", marketId)
+      .order("week", { ascending: false }),
+  ]);
+
+  if (membersResult.error)   throw new Error("[supabase] getLeaderboard (members): "   + membersResult.error.message);
+  if (snapshotsResult.error) throw new Error("[supabase] getLeaderboard (snapshots): " + snapshotsResult.error.message);
+
+  const latestSnap = {};
+  (snapshotsResult.data ?? []).forEach((s) => {
+    if (!latestSnap[s.user_id]) latestSnap[s.user_id] = s;
+  });
+
+  return (membersResult.data ?? [])
+    .map((m) => ({
+      userId:      m.user_id,
+      email:       m.profiles?.username ?? "Player",
+      cashBalance: Number(m.cash_balance),
+      totalValue:  latestSnap[m.user_id]
+        ? Number(latestSnap[m.user_id].total_value)
+        : Number(m.cash_balance),
+    }))
+    .sort((a, b) => b.totalValue - a.totalValue);
+}
+
+/**
  * Check whether the current user has is_admin = true in the profiles table.
  * Used by AdminPage to gate the admin UI (Day 8: fixes the old users-table query).
  */

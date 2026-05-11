@@ -92,4 +92,41 @@ CREATE POLICY "Admin can read all market_members"
   ON market_members FOR SELECT
   USING (public.is_admin());
 
-DROP POLICY IF EXISTS "Admin can insert market_me
+DROP POLICY IF EXISTS "Admin can insert market_members" ON market_members;
+CREATE POLICY "Admin can insert market_members"
+  ON market_members FOR INSERT
+  WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "Admin can delete market_members" ON market_members;
+CREATE POLICY "Admin can delete market_members"
+  ON market_members FOR DELETE
+  USING (public.is_admin());
+
+-- 10. portfolios: users can insert their own row (for join flow)
+DROP POLICY IF EXISTS "Users can create own portfolio" ON portfolios;
+CREATE POLICY "Users can create own portfolio"
+  ON portfolios FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Admin can read all portfolios" ON portfolios;
+CREATE POLICY "Admin can read all portfolios"
+  ON portfolios FOR SELECT
+  USING (public.is_admin());
+
+-- 11. Users can read their own profile; admin can read all users
+DROP POLICY IF EXISTS "Users can read own profile" ON users;
+CREATE POLICY "Users can read own profile"
+  ON users FOR SELECT
+  USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Admin can read all users" ON users;
+CREATE POLICY "Admin can read all users"
+  ON users FOR SELECT
+  USING (public.is_admin());
+
+-- ============================================================
+-- Done. Verify in the Supabase Table Editor:
+--   markets.status now accepts 'waiting'
+--   markets.invite_token column exists
+--   public.is_admin() function exists
+-- ============================================================

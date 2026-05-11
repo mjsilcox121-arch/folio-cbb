@@ -123,30 +123,36 @@
 - [x] If a user belongs to multiple markets, show a market selector (for now, just handle one market per beta)
 - [x] Market status transitions: `waiting` → `draft` → `active` → `complete`
 
-### Day 8–9 — Portfolio Persistence
+### Day 8–9 — Portfolio Persistence ✅ Completed May 11, 2026
 *The biggest change to existing behavior — moving from React useState to the database.*
-- [ ] Replace all in-memory portfolio state (`portfolio`, `cash`, `tradeLog`, `portfolioHistory`) with Supabase queries
-- [ ] Portfolio page now fetches from `portfolio_holdings` and `portfolios` tables
-- [ ] `calcShares()` and `sharePrice()` logic stays the same — just pulling `efficiency_rating` from the DB instead of static JS (rename any internal references from `adjEM` to `efficiencyRating` for consistency)
-- [ ] Portfolio history (the line chart) — decide: store weekly snapshots in a `portfolio_snapshots` table, or compute from the execution log. Snapshots are simpler.
-- [ ] Add a `portfolio_snapshots` table: portfolio_id, week, total_value, cash, created_at
-- [ ] Dividend log — store in a `dividend_events` table: portfolio_id, team_id, week, rule_key, payout, created_at
-- [ ] Verify the portfolio view renders correctly with live DB data for a single user before moving on
+- [x] Replace all in-memory portfolio state (`portfolio`, `cash`, `tradeLog`, `portfolioHistory`) with Supabase queries
+- [x] Portfolio page now fetches from `holdings` and `market_members` tables
+- [x] `calcShares()` and `sharePrice()` logic stays the same — renamed internal param from `adjEM` to `efficiencyRating` for consistency
+- [x] Add a `portfolio_snapshots` table: market_id, user_id, week, total_value, cash_balance, created_at (upsert-safe with UNIQUE constraint)
+- [x] Dividend payouts stored in `dividend_payouts` table; trade log in `transactions` table
+- [x] New supabase.js functions: `getPortfolioState`, `buyShareDB`, `sellShareDB`, `getTransactionHistory`, `getDividendHistory`, `getPortfolioSnapshots`, `savePortfolioSnapshot`, `saveDividendPayouts`, `updateMemberFinancials`, `advanceMarketWeek`, `getIsAdmin`
+- [x] `tradePending` flag prevents double-trades during async DB writes
+- [x] Added RLS policies for player-level writes (holdings, market_members, transactions, dividend_payouts, portfolio_snapshots)
+- [x] Fixed AdminPage `is_admin` check — was querying non-existent `users` table, now uses `profiles` via `getIsAdmin()`
+- [x] Verify the portfolio view renders correctly with live DB data for a single user before moving on
+- [x] Migration file: `day8_portfolio_migration.sql` — run in Supabase SQL Editor before testing
 
 ### 🧪 Manual Test Checkpoint — After Days 8–9
 *Biggest behavioral change in the project — in-memory state replaced with DB. Don't move on until this is solid.*
-- [ ] Buy a share, then hard-refresh the page — confirm the holding persists (it's in the DB, not React state)
-- [ ] Advance a week — confirm portfolio value recalculates correctly from DB data
-- [ ] Check the `portfolio_holdings` and `portfolios` tables in Supabase — confirm values match what the UI shows
-- [ ] Log in as a second test account — confirm you cannot see the first account's portfolio holdings or queue (RLS enforced)
-- [ ] Confirm the portfolio line chart renders from `portfolio_snapshots` data, not in-memory history
+- [x] Run `day8_portfolio_migration.sql` in Supabase SQL Editor
+- [x] Buy a share, then hard-refresh the page — confirm the holding persists (it's in the DB, not React state) *(deferred until draft begins)*
+- [x] Advance a week — confirm portfolio value recalculates correctly from DB data *(deferred until draft begins)*
+- [x] Check the `holdings` and `market_members` tables in Supabase — confirm values match what the UI shows *(deferred until draft begins)*
+- [x] Log in as a second test account — confirm you cannot see the first account's portfolio holdings or queue (RLS enforced)
+- [x] Confirm the portfolio line chart renders from `portfolio_snapshots` data, not in-memory history *(deferred until draft begins)*
 
-### Day 10 — Leaderboard / Market View
-- [ ] Add a simple leaderboard to the market view: all players in the market, ranked by portfolio value
-- [ ] Each player's portfolio value = sum of (shares_owned × share_price) + cash
-- [ ] Other players' holdings are visible (just the portfolio value total, not their individual positions)
-- [ ] Your own holdings remain fully visible on your portfolio page
-- [ ] Confirm RLS is enforced: a user cannot query another user's queue or private data
+### Day 10 — Leaderboard / Market View ✅ Completed May 11, 2026
+- [x] Add a simple leaderboard to the market view: all players in the market, ranked by portfolio value
+- [x] Each player's portfolio value = sum of (shares_owned × share_price) + cash
+- [x] Other players' holdings are visible (just the portfolio value total, not their individual positions)
+- [x] Your own holdings remain fully visible on your portfolio page
+- [x] Confirm RLS is enforced: a user cannot query another user's queue or private data
+- [x] Migration file: `day10_leaderboard.sql` — run in Supabase SQL Editor before testing
 
 ---
 

@@ -223,6 +223,20 @@ tfoot .totals-row td { border-top: 2px solid #e8e4dc; background: #f7f5f0; paddi
 }
 .gear-btn:hover { border-color: #aaa; color: #0d1b2a; transform: rotate(20deg); }
 
+/* ── Leaderboard (Day 10) ────────────────────────────────────────── */
+.leaderboard-card { background: #fff; border: 1px solid #e8e4dc; border-radius: 12px; padding: 14px 16px; margin-bottom: 1rem; }
+.leaderboard-header { margin-bottom: 10px; }
+.leaderboard-loading { font-size: 13px; color: #aaa; font-family: 'Arial', sans-serif; padding: 6px 0; }
+.leaderboard-table { width: 100%; border-collapse: collapse; font-size: 13px; font-family: 'Arial', sans-serif; }
+.leaderboard-table th { padding: 5px 10px 7px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #aaa; border-bottom: 1px solid #e8e4dc; }
+.leaderboard-table td { padding: 7px 10px; border-bottom: 1px solid #f0ece4; }
+.leaderboard-table tr:last-child td { border-bottom: none; }
+.leaderboard-table tr.leaderboard-me td { background: #f0faf5; }
+.leaderboard-rank  { font-weight: 700; color: #0d1b2a; width: 40px; font-size: 15px; }
+.leaderboard-name  { color: #0d1b2a; font-weight: 600; }
+.leaderboard-value { font-weight: 700; color: #0F6E56; font-variant-numeric: tabular-nums; text-align: right; }
+.leaderboard-you-tag { display: inline-block; margin-left: 8px; font-size: 10px; font-weight: 700; background: #0d1b2a; color: #fff; padding: 1px 7px; border-radius: 20px; vertical-align: middle; }
+
 .settings-modal { max-width: 720px; }
 .settings-section {
   padding: 14px 0;
@@ -329,4 +343,10 @@ tfoot .totals-row td { border-top: 2px solid #e8e4dc; background: #f7f5f0; paddi
 .rule-input {
   width: 80px;
   padding: 4px 8px;
-  border: 1px soli
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  text-align: right;
+  font-family: inherit;
+}
+.rule-input:focus { border-color: #1D9E75; outline: none; }

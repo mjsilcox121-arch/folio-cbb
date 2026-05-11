@@ -10,11 +10,10 @@ export default function PortfolioView({
   portfolioRows,
   portfolioHistory,
   portfolioValueDelta,
-  chartLabels,         // aligned with portfolioHistory length
   pieSlices,
   pieTotal,
   holdingsValue,
-  dividendsEarned,     // renamed from dividendBank — cumulative total received
+  dividendBank,
   weekDividendTotal,
   dividendLog,
   tradeLog,
@@ -22,7 +21,6 @@ export default function PortfolioView({
   weeks,
   teamsThisWeek,
   buyingPower,
-  tradePending,        // true while a DB buy/sell is in flight
   buyShare,
   sellShare,
   onSelectTeam,
@@ -40,7 +38,7 @@ export default function PortfolioView({
               </div>
               <LineChart
                 data={portfolioHistory}
-                labels={chartLabels ?? ["Start", ...weeks]}
+                labels={["Start", ...weeks]}
                 color="#1D9E75"
                 height={160}
                 currentIdx={portfolioHistory.length - 1}
@@ -82,47 +80,39 @@ export default function PortfolioView({
           <table>
             <thead>
               <tr>
-                <th>Team</th><th>Conf</th><th>Rating</th><th>Rating Chg</th>
+                <th>Team</th><th>Conf</th><th>AdjEM</th><th>AdjEM Chg</th>
                 <th>Price</th><th>Price Chg</th><th>Owned</th><th>Position $</th>
                 <th>Pos Chg</th><th>Divs (wk)</th><th>Divs (total)</th><th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {portfolioRows.map((row) => {
-                const teamShares = teamsThisWeek.find((t) => t.team === row.teamName)?.shares ?? Infinity;
-                return (
-                  <tr key={row.teamName}>
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span className="team-color-dot" style={{ background: teamColor(row.idx) }} />
-                        <button className="team-link" onClick={() => onSelectTeam(row.teamName)}>{row.teamName}</button>
-                      </div>
-                    </td>
-                    <td><span className="conf-badge">{row.conf}</span></td>
-                    <td className="adjEM positive">+{row.adjEM.toFixed(2)}</td>
-                    <td>{week > 0 ? <Delta value={row.adjEMDelta} /> : <span className="delta neutral">—</span>}</td>
-                    <td className="price-cell">${row.price.toFixed(2)}</td>
-                    <td>{week > 0 ? <Delta value={row.priceDelta} /> : <span className="delta neutral">—</span>}</td>
-                    <td><span className="shares-count">{row.owned}</span></td>
-                    <td className="position-value">${row.value.toFixed(2)}</td>
-                    <td>{week > 0 ? <Delta value={row.valueDelta} /> : <span className="delta neutral">—</span>}</td>
-                    <td>{row.weekDiv > 0 ? <span className="div-earned">+${row.weekDiv.toFixed(2)}</span> : <span className="owned-zero">—</span>}</td>
-                    <td>{row.totalDivs > 0 ? <span className="div-earned">${row.totalDivs.toFixed(2)}</span> : <span className="owned-zero">—</span>}</td>
-                    <td>
-                      <div className="action-btns">
-                        <button className="buy-btn" onClick={() => buyShare(row.teamName)}
-                          disabled={tradePending || buyingPower < row.price - 0.001 || row.owned >= teamShares}>
-                          Buy
-                        </button>
-                        <button className="sell-btn" onClick={() => sellShare(row.teamName)}
-                          disabled={tradePending}>
-                          Sell
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+              {portfolioRows.map((row) => (
+                <tr key={row.teamName}>
+                  <td>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span className="team-color-dot" style={{ background: teamColor(row.idx) }} />
+                      <button className="team-link" onClick={() => onSelectTeam(row.teamName)}>{row.teamName}</button>
+                    </div>
+                  </td>
+                  <td><span className="conf-badge">{row.conf}</span></td>
+                  <td className="adjEM positive">+{row.adjEM.toFixed(2)}</td>
+                  <td>{week > 0 ? <Delta value={row.adjEMDelta} /> : <span className="delta neutral">—</span>}</td>
+                  <td className="price-cell">${row.price.toFixed(2)}</td>
+                  <td>{week > 0 ? <Delta value={row.priceDelta} /> : <span className="delta neutral">—</span>}</td>
+                  <td><span className="shares-count">{row.owned}</span></td>
+                  <td className="position-value">${row.value.toFixed(2)}</td>
+                  <td>{week > 0 ? <Delta value={row.valueDelta} /> : <span className="delta neutral">—</span>}</td>
+                  <td>{row.weekDiv > 0 ? <span className="div-earned">+${row.weekDiv.toFixed(2)}</span> : <span className="owned-zero">—</span>}</td>
+                  <td>{row.totalDivs > 0 ? <span className="div-earned">${row.totalDivs.toFixed(2)}</span> : <span className="owned-zero">—</span>}</td>
+                  <td>
+                    <div className="action-btns">
+                      <button className="buy-btn" onClick={() => buyShare(row.teamName)}
+                        disabled={buyingPower < row.price - 0.001 || row.owned >= (teamsThisWeek.find((t) => t.team === row.teamName)?.shares ?? Infinity)}>Buy</button>
+                      <button className="sell-btn" onClick={() => sellShare(row.teamName)}>Sell</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
             <tfoot>
               <tr className="totals-row">
@@ -130,7 +120,7 @@ export default function PortfolioView({
                 <td className="position-value totals-value">${holdingsValue.toFixed(2)}</td>
                 <td>{portfolioValueDelta != null && week > 0 && <Delta value={portfolioValueDelta} />}</td>
                 <td className="div-earned totals-value">{weekDividendTotal > 0 ? `+$${weekDividendTotal.toFixed(2)}` : "—"}</td>
-                <td className="div-earned totals-value">${dividendsEarned.toFixed(2)}</td>
+                <td className="div-earned totals-value">${dividendBank.toFixed(2)}</td>
                 <td></td>
               </tr>
             </tfoot>
@@ -140,7 +130,7 @@ export default function PortfolioView({
 
       {/* Dividend history */}
       <div className="section-title">
-        Dividend history {dividendsEarned > 0 && <span className="div-total-pill">${dividendsEarned.toFixed(2)} earned</span>}
+        Dividend history {dividendBank > 0 && <span className="div-total-pill">${dividendBank.toFixed(2)} available</span>}
       </div>
       {dividendLog.length === 0 ? (
         <div className="empty-log">No dividends yet.</div>
@@ -151,7 +141,7 @@ export default function PortfolioView({
             <tbody>
               {dividendLog.map((d, i) => (
                 <tr key={i} className={d.week === week ? "new-div-row" : ""}>
-                  <td className="record">{weeks[d.week] ?? `Wk ${d.week}`}</td>
+                  <td className="record">{d.weekLabel}</td>
                   <td><button className="team-link" onClick={() => onSelectTeam(d.team)}>{d.team}</button></td>
                   <td><span className="event-label">{d.event}</span></td>
                   <td className="price-cell">+${d.baseValue}</td>
@@ -175,7 +165,7 @@ export default function PortfolioView({
             <tbody>
               {tradeLog.map((t, i) => (
                 <tr key={i}>
-                  <td className="record">{weeks[t.week] ?? `Wk ${t.week}`}</td>
+                  <td className="record">{t.weekLabel}</td>
                   <td><button className="team-link" onClick={() => onSelectTeam(t.team)}>{t.team}</button></td>
                   <td><span className={`action-pill ${t.action.toLowerCase()}`}>{t.action}</span></td>
                   <td>{t.qty}</td>

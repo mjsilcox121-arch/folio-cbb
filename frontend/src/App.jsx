@@ -12,6 +12,7 @@ import { useAuth } from "./context/AuthContext";
 import { useMarket } from "./context/MarketContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import MarketTable from "./components/MarketTable";
+import Leaderboard from "./components/Leaderboard";
 import PortfolioView from "./components/PortfolioView";
 import TeamModal from "./components/TeamModal";
 import SettingsModal from "./components/SettingsModal";
@@ -31,6 +32,7 @@ import {
   saveDividendPayouts,
   updateMemberFinancials,
   advanceMarketWeek,
+  getLeaderboard,
 } from "./lib/supabase";
 import "./App.css";
 
@@ -72,9 +74,13 @@ function GameLayout() {
   const [portfolioHistory, setPortfolioHistory] = useState([DEFAULT_BUDGET]);
 
   // ── Loading / async flags ──────────────────────────────────────────────────
-  const [portfolioLoading, setPortfolioLoading] = useState(false);
-  const [tradePending, setTradePending]         = useState(false);
-  const [tradeError, setTradeError]             = useState("");
+  const [portfolioLoading, setPortfolioLoading]   = useState(false);
+  const [tradePending, setTradePending]           = useState(false);
+  const [tradeError, setTradeError]               = useState("");
+
+  // ── Leaderboard (Day 10) ───────────────────────────────────────────────────
+  const [leaderboard, setLeaderboard]             = useState([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
 
   // ── UI state ───────────────────────────────────────────────────────────────
   const [search, setSearch]             = useState("");
@@ -153,6 +159,7 @@ function GameLayout() {
     setBudget(startBudget);
 
     loadPortfolioFromDB(market.id, startBudget);
+    loadLeaderboardFromDB(market.id);
   }, [market?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Derived game data ──────────────────────────────────────────────────────
@@ -396,6 +403,7 @@ function GameLayout() {
         }
         await Promise.all(dbWrites);
         refreshMarkets(); // update market.current_week in context
+        loadLeaderboardFromDB(market.id);
       } catch (err) {
         console.error("[advanceWeek] DB write failed:", err.message);
         // Non-fatal — local state still advances
@@ -410,10 +418,23 @@ function GameLayout() {
     setWeek(nextWeek);
   }
 
+  async function loadLeaderboardFromDB(marketId) {
+    setLeaderboardLoading(true);
+    try {
+      const entries = await getLeaderboard(marketId);
+      setLeaderboard(entries);
+    } catch (err) {
+      console.warn("[GameLayout] loadLeaderboard failed:", err.message);
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  }
+
   // Reload portfolio from DB (replaces old resetGame for multi-user play)
   function handleRefreshPortfolio() {
     if (!market?.id) return;
     loadPortfolioFromDB(market.id, startingBudget);
+    loadLeaderboardFromDB(market.id);
   }
 
   function handleSort(col) {
@@ -580,27 +601,34 @@ function GameLayout() {
       {/* Route-based page views */}
       <Routes>
         <Route path="market" element={
-          <MarketTable
-            filteredTeams={filteredTeams}
-            totalTeams={TEAM_HISTORY.length}
-            portfolio={portfolio}
-            buyingPower={buyingPower}
-            week={week}
-            draftMode={draftMode}
-            sortCol={sortCol}
-            sortAsc={sortAsc}
-            search={search}
-            confFilter={confFilter}
-            conferences={conferences}
-            maxAdjEM={maxAdjEM}
-            tradePending={tradePending}
-            onSearch={setSearch}
-            onConfFilter={setConfFilter}
-            onSort={handleSort}
-            onBuy={buyShare}
-            onSell={sellShare}
-            onSelectTeam={setSelectedTeam}
-          />
+          <>
+            <Leaderboard
+              entries={leaderboard}
+              currentUserId={user?.id}
+              loading={leaderboardLoading}
+            />
+            <MarketTable
+              filteredTeams={filteredTeams}
+              totalTeams={TEAM_HISTORY.length}
+              portfolio={portfolio}
+              buyingPower={buyingPower}
+              week={week}
+              draftMode={draftMode}
+              sortCol={sortCol}
+              sortAsc={sortAsc}
+              search={search}
+              confFilter={confFilter}
+              conferences={conferences}
+              maxAdjEM={maxAdjEM}
+              tradePending={tradePending}
+              onSearch={setSearch}
+              onConfFilter={setConfFilter}
+              onSort={handleSort}
+              onBuy={buyShare}
+              onSell={sellShare}
+              onSelectTeam={setSelectedTeam}
+            />
+          </>
         } />
         <Route path="portfolio" element={
           <PortfolioView

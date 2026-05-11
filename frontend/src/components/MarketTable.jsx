@@ -16,7 +16,6 @@ export default function MarketTable({
   confFilter,
   conferences,
   maxAdjEM,
-  tradePending,
   onSearch,
   onConfFilter,
   onSort,
@@ -54,8 +53,8 @@ export default function MarketTable({
               <th onClick={() => onSort("team")}>Team {arrow("team")}</th>
               <th onClick={() => onSort("conference")}>Conf {arrow("conference")}</th>
               <th onClick={() => onSort("record")}>Record {arrow("record")}</th>
-              <th onClick={() => onSort("adjEM")}>Rating {arrow("adjEM")}</th>
-              <th onClick={() => onSort("adjEMDelta")}>Rating Chg {arrow("adjEMDelta")}</th>
+              <th onClick={() => onSort("adjEM")}>AdjEM {arrow("adjEM")}</th>
+              <th onClick={() => onSort("adjEMDelta")}>AdjEM Chg {arrow("adjEMDelta")}</th>
               <th onClick={() => onSort("shares")}>Shares {arrow("shares")}</th>
               <th onClick={() => onSort("price")}>Price {arrow("price")}</th>
               <th onClick={() => onSort("priceDelta")}>Price Chg {arrow("priceDelta")}</th>
@@ -92,9 +91,9 @@ export default function MarketTable({
                   <td>{owned > 0 ? <span className="owned-badge">{owned}{atMax && "/" + t.shares}</span> : <span className="owned-zero">—</span>}</td>
                   <td>
                     <div className="action-btns">
-                      <button className="buy-btn" onClick={() => onBuy(t.team)} disabled={tradePending || !canBuy}
+                      <button className="buy-btn" onClick={() => onBuy(t.team)} disabled={!canBuy}
                         title={atMax ? `All ${t.shares} shares owned` : undefined}>Buy</button>
-                      <button className="sell-btn" onClick={() => onSell(t.team)} disabled={tradePending || owned === 0}>Sell</button>
+                      <button className="sell-btn" onClick={() => onSell(t.team)} disabled={owned === 0}>Sell</button>
                     </div>
                   </td>
                 </tr>

@@ -140,6 +140,9 @@ COMMENT ON FUNCTION public.unlock_portfolios IS
 -- Changes from Day 12:
 --   • Returns VOID instead of public.queue_requests (client never uses return value).
 --   • Adds portfolio_locked check after membership verification.
+-- Must DROP first — PostgreSQL cannot change a function's return type in place.
+
+DROP FUNCTION IF EXISTS public.submit_queue_request_validated(UUID, INT, TEXT, TEXT, NUMERIC, INT);
 
 CREATE OR REPLACE FUNCTION public.submit_queue_request_validated(
   p_market_id      UUID,

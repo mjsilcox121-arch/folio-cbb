@@ -88,20 +88,24 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  PERFORM public._finalize_draft(NEW.market_id);
+  -- Cast to text for safe comparison regardless of whether status is TEXT or an enum type.
+  IF NEW.status::text = 'complete' AND OLD.status::text IS DISTINCT FROM 'complete' THEN
+    PERFORM public._finalize_draft(NEW.market_id);
+  END IF;
   RETURN NEW;
 END;
 $$;
 
 COMMENT ON FUNCTION public._on_draft_complete IS
-  'Trigger function. Calls _finalize_draft when draft_state.status transitions to ''complete''.';
+  'Trigger function. Calls _finalize_draft when draft_state.status transitions to ''complete''.
+   Uses ::text cast so the comparison works whether status is TEXT or an enum.';
 
 DROP TRIGGER IF EXISTS trg_draft_complete ON public.draft_state;
 
+-- No WHEN clause — condition lives inside the function body to avoid enum cast errors.
 CREATE TRIGGER trg_draft_complete
 AFTER UPDATE ON public.draft_state
 FOR EACH ROW
-WHEN (NEW.status = 'complete' AND OLD.status IS DISTINCT FROM 'complete')
 EXECUTE FUNCTION public._on_draft_complete();
 
 COMMENT ON TRIGGER trg_draft_complete ON public.draft_state IS

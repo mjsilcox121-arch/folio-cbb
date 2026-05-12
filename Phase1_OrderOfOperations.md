@@ -230,16 +230,17 @@
 - [x] SQL files moved to `database/migrations/` folder
 - [x] Migration file: `database/migrations/day15_draft_infrastructure.sql` — run in Supabase SQL Editor before testing
 
-### Day 16–17 — Draft UI
-- [ ] Build the `/draft` page
-- [ ] Show whose turn it is prominently
-- [ ] Show all available teams and their share prices (same market table view)
-- [ ] If it is your turn: clicking a team adds it to your draft picks (one per turn, then turn passes)
-- [ ] Show each player's current picks as they accumulate (visible to all — draft is public)
-- [ ] "Lock In" button — ends your draft, passes turn permanently, but you remain able to spend until broke
-- [ ] Show remaining budget for each player
-- [ ] Show when a player is done (locked or out of funds)
-- [ ] Real-time updates using Supabase Realtime subscriptions — all players see picks as they happen without refreshing
+### Day 16–17 — Draft UI ✅ Completed May 11, 2026
+- [x] Build the `/draft` page
+- [x] Show whose turn it is prominently (green banner when it's your turn, gray when waiting)
+- [x] Show all available teams and their share prices (sorted by adjEM, searchable)
+- [x] If it is your turn: clicking Pick submits pick, advances turn server-side
+- [x] Show each player's current picks as they accumulate (pick chips in sidebar, visible to all)
+- [x] "Lock In" button — marks player as done, advances turn, marks draft complete if all locked
+- [x] Show remaining budget for each player in sidebar
+- [x] Show when a player is done (Locked badge + reduced opacity)
+- [x] Real-time updates via Supabase Realtime (postgres_changes on draft_state + draft_picks)
+- [x] Implementation: DraftPage.jsx with two-column layout; draft CSS in App.css
 
 ### Day 18 — Draft Real-Time Sync
 *The hardest technical piece — concurrent access and turn enforcement.*

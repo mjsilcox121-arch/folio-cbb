@@ -38,7 +38,7 @@ function UpcomingGameRow({ game, weeks }) {
 const MAX_QUEUE = 10;
 
 // ── Queue-based action bar ─────────────────────────────────────────────────────
-function ModalActions({ teamDetail, week, selectedTeam, portfolio, buyingPower, queueRequests, submitting, onQueueBuy, onQueueSell, onCancelRequest }) {
+function ModalActions({ teamDetail, week, selectedTeam, portfolio, buyingPower, queueRequests, submitting, portfolioLocked, onQueueBuy, onQueueSell, onCancelRequest }) {
   const adjEM       = teamDetail.weeklyAdjEM[week];
   const totalShares = calcShares(adjEM);
   const ownedNow    = portfolio[selectedTeam] || 0;
@@ -55,6 +55,17 @@ function ModalActions({ teamDetail, week, selectedTeam, portfolio, buyingPower, 
   const cantAfford  = buyingPower < priceNow - 0.001;
   const buyDisabled = submitting || atMax || cantAfford || atQueueLimit;
   const sellDisabled = submitting || !ownedNow || atQueueLimit;
+
+  if (portfolioLocked) {
+    return (
+      <div className="modal-actions-wrap">
+        <div className="portfolio-locked-notice">
+          <span className="portfolio-locked-icon">🔒</span>
+          <span>Portfolios are locked — trading opens when the admin advances to Week 1.</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="modal-actions-wrap">
@@ -98,7 +109,7 @@ function ModalActions({ teamDetail, week, selectedTeam, portfolio, buyingPower, 
 }
 
 // ── Main export: full modal overlay ───────────────────────────────────────────
-export default function TeamModal({ selectedTeam, teamDetail, week, weeks, portfolio, buyingPower, queueRequests, submitting, onQueueBuy, onQueueSell, onCancelRequest, onClose }) {
+export default function TeamModal({ selectedTeam, teamDetail, week, weeks, portfolio, buyingPower, queueRequests, submitting, portfolioLocked, onQueueBuy, onQueueSell, onCancelRequest, onClose }) {
   if (!selectedTeam || !teamDetail) return null;
 
   return (
@@ -180,6 +191,7 @@ export default function TeamModal({ selectedTeam, teamDetail, week, weeks, portf
           buyingPower={buyingPower}
           queueRequests={queueRequests}
           submitting={submitting}
+          portfolioLocked={portfolioLocked}
           onQueueBuy={onQueueBuy}
           onQueueSell={onQueueSell}
           onCancelRequest={onCancelRequest}

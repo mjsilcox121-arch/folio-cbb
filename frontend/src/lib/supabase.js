@@ -205,7 +205,7 @@ export async function getPortfolioState(marketId) {
   const [memberResult, holdingsResult] = await Promise.all([
     supabase
       .from("market_members")
-      .select("cash_balance, dividends_earned")
+      .select("cash_balance, dividends_earned, is_locked")
       .eq("market_id", marketId)
       .eq("user_id", user.id)
       .maybeSingle(),
@@ -220,7 +220,7 @@ export async function getPortfolioState(marketId) {
   if (memberResult.error)   throw new Error("[supabase] getPortfolioState (member): "   + memberResult.error.message);
   if (holdingsResult.error) throw new Error("[supabase] getPortfolioState (holdings): " + holdingsResult.error.message);
 
-  if (!memberResult.data) return { cashBalance: 0, dividendsEarned: 0, holdings: {} };
+  if (!memberResult.data) return { cashBalance: 0, dividendsEarned: 0, holdings: {}, isLocked: false };
 
   const holdings = {};
   (holdingsResult.data ?? []).forEach((h) => { holdings[h.team_id] = h.shares; });
@@ -228,6 +228,7 @@ export async function getPortfolioState(marketId) {
   return {
     cashBalance:     Number(memberResult.data.cash_balance),
     dividendsEarned: Number(memberResult.data.dividends_earned),
+    isLocked:        memberResult.data.is_locked === true,
     holdings,
   };
 }
@@ -460,6 +461,18 @@ export async function advanceMarketWeek(marketId, newWeek) {
   if (error) throw new Error("[supabase] advanceMarketWeek: " + error.message);
 }
 
+/**
+ * Unlock all portfolios in a market (admin only).
+ * Called when the admin advances to Week 1 to open the first queue window.
+ */
+export async function unlockPortfolios(marketId) {
+  const { error } = await supabase.rpc("unlock_portfolios", { p_market_id: marketId });
+  if (error) {
+    if (error.message?.trim() === "not_authorized") throw new Error("Admin access required.");
+    throw new Error("[supabase] unlockPortfolios: " + error.message);
+  }
+}
+
 // ── Queue requests (Day 11) ────────────────────────────────────────────────
 
 const QUEUE_ERROR_MESSAGES = {
@@ -469,6 +482,7 @@ const QUEUE_ERROR_MESSAGES = {
   queue_full:         "Queue full — you already have 10 pending requests this week",
   not_a_member:       "You are not a member of this market",
   not_authenticated:  "Not signed in",
+  portfolio_locked:   "Portfolios are locked — the admin will advance to Week 1 to open trading",
 };
 
 /**

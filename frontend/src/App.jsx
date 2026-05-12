@@ -33,6 +33,7 @@ import {
   saveDividendPayouts,
   updateMemberFinancials,
   advanceMarketWeek,
+  unlockPortfolios,
   getLeaderboard,
   submitQueueRequest,
   getMyQueueRequests,
@@ -90,6 +91,7 @@ function GameLayout() {
   const [queueRequests, setQueueRequests]           = useState([]);
   const [queueSubmitting, setQueueSubmitting]       = useState(false);
   const [queueError, setQueueError]                 = useState("");
+  const [portfolioLocked, setPortfolioLocked]       = useState(false);
 
   // ── UI state ───────────────────────────────────────────────────────────────
   const [search, setSearch]             = useState("");
@@ -118,6 +120,7 @@ function GameLayout() {
       setPortfolio(state.holdings);
       setCashBalance(state.cashBalance > 0 ? state.cashBalance : startBudget);
       setDividendsEarned(state.dividendsEarned);
+      setPortfolioLocked(state.isLocked ?? false);
 
       // Map DB transactions → UI tradeLog shape
       setTradeLog(
@@ -406,12 +409,14 @@ function GameLayout() {
         const dbWrites = [
           savePortfolioSnapshot(market.id, nextWeek, newTotalValue, newCashBalance),
           advanceMarketWeek(market.id, nextWeek),
+          unlockPortfolios(market.id),
         ];
         if (weekDivTotal > 0) {
           dbWrites.push(saveDividendPayouts(market.id, nextWeek, dbDivRows));
           dbWrites.push(updateMemberFinancials(market.id, newCashBalance, weekDivTotal));
         }
         await Promise.all(dbWrites);
+        setPortfolioLocked(false); // portfolios unlock when week advances
         refreshMarkets(); // update market.current_week in context
         loadLeaderboardFromDB(market.id);
         loadQueueFromDB(market.id, nextWeek); // new week = empty queue
@@ -689,6 +694,7 @@ function GameLayout() {
               weekLabel={WEEKS[week] ?? `Week ${week}`}
               onCancel={handleCancelRequest}
               submitting={queueSubmitting}
+              portfolioLocked={portfolioLocked}
             />
             <MarketTable
               filteredTeams={filteredTeams}
@@ -754,6 +760,7 @@ function GameLayout() {
         buyingPower={buyingPower}
         queueRequests={queueRequests}
         submitting={queueSubmitting}
+        portfolioLocked={portfolioLocked}
         onQueueBuy={handleQueueBuy}
         onQueueSell={handleQueueSell}
         onCancelRequest={handleCancelRequest}

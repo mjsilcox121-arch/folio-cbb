@@ -245,6 +245,14 @@ tfoot .totals-row td { border-top: 2px solid #e8e4dc; background: #f7f5f0; paddi
 .queue-cancel-btn:hover:not(:disabled) { background: #FAECE7; border-color: #F5C4B3; }
 .queue-cancel-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* Portfolio locked notice (Day 19) */
+.portfolio-locked-notice {
+  display: flex; align-items: center; gap: 10px;
+  background: #f7f5f0; border: 1px solid #e8e4dc; border-radius: 8px;
+  padding: 12px 14px; font-family: 'Arial', sans-serif; font-size: 13px; color: #666;
+}
+.portfolio-locked-icon { font-size: 16px; flex-shrink: 0; }
+
 /* Modal queue actions */
 .modal-actions-wrap { margin-top: 20px; }
 .queue-limit-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }

@@ -16,7 +16,18 @@ function statusLabel(status) {
   return "Failed";
 }
 
-export default function QueuePanel({ requests, weekLabel, onCancel, submitting }) {
+export default function QueuePanel({ requests, weekLabel, onCancel, submitting, portfolioLocked }) {
+  if (portfolioLocked) {
+    return (
+      <div className="queue-panel">
+        <div className="portfolio-locked-notice">
+          <span className="portfolio-locked-icon">🔒</span>
+          <span>Portfolios are locked — trading opens when the admin advances to Week 1.</span>
+        </div>
+      </div>
+    );
+  }
+
   if (!requests || requests.length === 0) return null;
 
   const pendingCount = requests.filter((r) => r.status === "pending").length;

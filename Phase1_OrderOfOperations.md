@@ -260,13 +260,15 @@
 - [ ] Simulate a slow network: submit two picks simultaneously from both accounts — confirm only one succeeds and the other gets a clean error
 - [ ] Complete the draft — confirm `draft_state.status` transitions to `complete` and all players are redirected to `/market`
 
-### Day 19 — Draft Completion & Portfolio Lock
-- [ ] When draft is complete: write all draft picks to `portfolio_holdings`
-- [ ] Set `portfolios.locked = true` for all players (portfolios locked for week 1)
-- [ ] Set `market.status = active`
-- [ ] Redirect all players from `/draft` to `/market`
-- [ ] "Advance Week" should unlock portfolios and open the first queue window
-- [ ] Snapshot portfolio values at the end of draft day (week 0 baseline)
+### Day 19 — Draft Completion & Portfolio Lock ✅ Completed May 12, 2026
+- [x] When draft is complete: write all draft picks to `portfolio_holdings`
+- [x] Set `portfolios.locked = true` for all players (portfolios locked for week 1)
+- [x] Set `market.status = active`
+- [x] Redirect all players from `/draft` to `/market`
+- [x] "Advance Week" should unlock portfolios and open the first queue window
+- [x] Snapshot portfolio values at the end of draft day (week 0 baseline)
+- [x] Migration file: `database/migrations/day19_draft_completion.sql` — run in Supabase SQL Editor before testing
+- Notes: Used a trigger (trg_draft_complete on draft_state) instead of modifying submit_draft_pick/lock_in_draft to avoid PostgreSQL type-resolution errors with table row return types in migration transactions
 
 ---
 

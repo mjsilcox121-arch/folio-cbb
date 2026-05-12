@@ -15,6 +15,7 @@ import {
   removeMarketMember,
   getIsAdmin,
   executeQueue,
+  initializeDraft,
 } from "../lib/supabase";
 
 const STATUS_NEXT = { waiting: "draft", draft: "active", active: "complete" };
@@ -65,6 +66,8 @@ export default function AdminPage() {
   const [execLoading, setExecLoading]       = useState({});
   const [execResult, setExecResult]         = useState({});
   const [execError, setExecError]           = useState({});
+  const [draftLoading, setDraftLoading]     = useState({});
+  const [draftError, setDraftError]         = useState({});
   const [logoutError, setLogoutError]       = useState("");
 
   useEffect(() => {
@@ -160,6 +163,20 @@ export default function AdminPage() {
       setExecError((s) => ({ ...s, [market.id]: err.message }));
     } finally {
       setExecLoading((s) => ({ ...s, [market.id]: false }));
+    }
+  }
+
+  async function handleInitializeDraft(market) {
+    if (!window.confirm(`Initialize draft for "${market.name}"?\n\nThis will randomize the player order and set the market to Draft status. This cannot be undone.`)) return;
+    setDraftLoading((s) => ({ ...s, [market.id]: true }));
+    setDraftError((s) => ({ ...s, [market.id]: "" }));
+    try {
+      await initializeDraft(market.id);
+      await loadMarkets();
+    } catch (err) {
+      setDraftError((s) => ({ ...s, [market.id]: err.message }));
+    } finally {
+      setDraftLoading((s) => ({ ...s, [market.id]: false }));
     }
   }
 
@@ -326,6 +343,19 @@ export default function AdminPage() {
                   <div style={{ fontSize: 12, color: "#888", fontFamily: "Arial, sans-serif" }}>
                     Current week: <strong style={{ color: "#0d1b2a" }}>{market.current_week ?? 0}</strong>
                   </div>
+                  {market.status === "waiting" && (
+                    <button
+                      onClick={() => handleInitializeDraft(market)}
+                      disabled={draftLoading[market.id]}
+                      style={{
+                        fontFamily: "Arial, sans-serif", fontSize: 13, fontWeight: 600,
+                        padding: "0 16px", height: 38, borderRadius: 7, cursor: draftLoading[market.id] ? "not-allowed" : "pointer",
+                        background: draftLoading[market.id] ? "#ccc" : "#854F0B", color: "#fff", border: "none", whiteSpace: "nowrap",
+                      }}
+                    >
+                      {draftLoading[market.id] ? "Initializing…" : "Initialize Draft"}
+                    </button>
+                  )}
                   <button
                     onClick={() => handleExecuteQueue(market)}
                     disabled={execLoading[market.id]}
@@ -338,6 +368,11 @@ export default function AdminPage() {
                     {execLoading[market.id] ? "Executing…" : "Execute Queue"}
                   </button>
                 </div>
+                {draftError[market.id] && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: "#993C1D", fontFamily: "Arial, sans-serif" }}>
+                    {draftError[market.id]}
+                  </div>
+                )}
                 {execResult[market.id] && (
                   <div style={{ marginTop: 8, fontSize: 13, fontFamily: "Arial, sans-serif", color: "#0d1b2a" }}>
                     {execResult[market.id].total === 0

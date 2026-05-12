@@ -580,6 +580,76 @@ export async function getLeaderboard(marketId) {
     .sort((a, b) => b.totalValue - a.totalValue);
 }
 
+// ── Draft (Day 15) ────────────────────────────────────────────────────────────
+
+const DRAFT_ERROR_MESSAGES = {
+  not_authorized:           "Admin access required.",
+  draft_already_initialized: "Draft has already been initialized for this market.",
+  no_members_in_market:     "No players have joined this market yet.",
+  draft_not_initialized:    "Draft has not been started yet.",
+  draft_complete:           "The draft is already complete.",
+  not_your_turn:            "It's not your turn to pick.",
+  shares_unavailable:       "That team's shares are fully drafted.",
+  not_enough_cash:          "Not enough cash to pick this team.",
+  not_authenticated:        "Not signed in.",
+  not_a_member:             "You are not a member of this market.",
+  already_locked_in:        "You've already locked in.",
+  market_not_in_waiting_status: "Market must be in 'waiting' status to start a draft.",
+};
+
+function draftError(error) {
+  const code = error.message?.trim();
+  return new Error(DRAFT_ERROR_MESSAGES[code] ?? error.message);
+}
+
+/** Admin only. Randomizes player order and initializes the draft. */
+export async function initializeDraft(marketId) {
+  const { data, error } = await supabase.rpc("initialize_draft", { p_market_id: marketId });
+  if (error) throw draftError(error);
+  return data; // { draft_order, first_turn }
+}
+
+/** Read the current draft state for a market (null if not started). */
+export async function getDraftState(marketId) {
+  const { data, error } = await supabase
+    .from("draft_state")
+    .select("*")
+    .eq("market_id", marketId)
+    .maybeSingle();
+  if (error) throw new Error("[supabase] getDraftState: " + error.message);
+  return data;
+}
+
+/** Read all picks for a market, oldest first. */
+export async function getDraftPicks(marketId) {
+  const { data, error } = await supabase
+    .from("draft_picks")
+    .select("id, user_id, team_id, pick_number, price_per_share, created_at")
+    .eq("market_id", marketId)
+    .order("pick_number", { ascending: true });
+  if (error) throw new Error("[supabase] getDraftPicks: " + error.message);
+  return data ?? [];
+}
+
+/** Submit a draft pick. Enforced server-side: turn order, cash, share availability. */
+export async function submitDraftPick(marketId, teamId, pricePerShare, totalShares) {
+  const { data, error } = await supabase.rpc("submit_draft_pick", {
+    p_market_id:       marketId,
+    p_team_id:         teamId,
+    p_price_per_share: pricePerShare,
+    p_total_shares:    totalShares ?? 0,
+  });
+  if (error) throw draftError(error);
+  return data;
+}
+
+/** Mark the current user as done picking. Advances turn; completes draft if everyone is locked. */
+export async function lockInDraft(marketId) {
+  const { data, error } = await supabase.rpc("lock_in_draft", { p_market_id: marketId });
+  if (error) throw draftError(error);
+  return data; // { locked: true, draft_complete: bool }
+}
+
 /**
  * Fetch all executed and failed queue requests for a market, across all players.
  * Requires the Day 14 RLS policy — co-members can read executed/failed rows.

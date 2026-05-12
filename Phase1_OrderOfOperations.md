@@ -218,14 +218,17 @@
 ## 🎲 WEEK 4–5 — Draft Day (Days 15–21)
 *The most complex piece. Build this last so the simpler foundations are solid.*
 
-### Day 15 — Draft Infrastructure
-- [ ] Add a `draft_picks` table: market_id, user_id, team_id, pick_number, created_at
-- [ ] When admin sets market status to `draft`, initialize `draft_state`:
+### Day 15 — Draft Infrastructure ✅ Completed May 11, 2026
+- [x] Add a `draft_picks` table: market_id, user_id, team_id, pick_number, price_per_share, created_at
+- [x] When admin sets market status to `draft`, initialize `draft_state`:
   - Randomize the draft order (array of user_ids)
   - Set `current_turn_user_id` to first in order
   - Set available shares: all teams start with their full `shares_total`
-- [ ] Shares picked during draft reduce availability in real time
-- [ ] Once all players lock in or run out of funds → set market status to `active`, lock all portfolios, zero out `draftMode`
+- [x] Shares picked during draft reduce availability in real time (server-side check: drafted count < total_shares)
+- [x] Once all players lock in → set market status to `active` (automatic in submit_draft_pick / lock_in_draft)
+- [x] Implementation: `draft_state` + `draft_picks` tables with RLS; `initialize_draft()`, `submit_draft_pick()`, `lock_in_draft()` RPCs (all SECURITY DEFINER, FOR UPDATE on draft_state prevents race conditions); supabase.js wrappers; AdminPage "Initialize Draft" button
+- [x] SQL files moved to `database/migrations/` folder
+- [x] Migration file: `database/migrations/day15_draft_infrastructure.sql` — run in Supabase SQL Editor before testing
 
 ### Day 16–17 — Draft UI
 - [ ] Build the `/draft` page

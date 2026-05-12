@@ -242,13 +242,15 @@
 - [x] Real-time updates via Supabase Realtime (postgres_changes on draft_state + draft_picks)
 - [x] Implementation: DraftPage.jsx with two-column layout; draft CSS in App.css
 
-### Day 18 — Draft Real-Time Sync
+### Day 18 — Draft Real-Time Sync ✅ Completed May 12, 2026
 *The hardest technical piece — concurrent access and turn enforcement.*
-- [ ] Use Supabase Realtime to subscribe to `draft_state` changes — when `current_turn_user_id` changes, the UI updates for all players instantly
-- [ ] Enforce turn order server-side: a pick submission is rejected if it is not the submitting user's turn
-- [ ] Handle race conditions: if two players somehow submit simultaneously, use a database transaction to ensure only one succeeds
-- [ ] Test with two browser windows (two different logged-in users) — picks should appear in real time
-- [ ] When all players are done, `draft_state.status` transitions to `complete` automatically (triggered by a DB function or Edge Function)
+- [x] Use Supabase Realtime to subscribe to `draft_state` changes — when `current_turn_user_id` changes, the UI updates for all players instantly
+- [x] Enforce turn order server-side: a pick submission is rejected if it is not the submitting user's turn (`not_your_turn` exception in `submit_draft_pick`)
+- [x] Handle race conditions: `FOR UPDATE` on draft_state row ensures only one concurrent submission wins; the other gets a clean `not_your_turn` error
+- [x] When all players are done, `draft_state.status` transitions to `complete` automatically inside the RPCs (no Edge Function needed)
+- [x] Auto-redirect: when `draft_state.status` becomes `complete`, all players see a 4-second countdown then navigate to `/market`
+- [x] Realtime connection status indicator (green/amber/red dot) with manual Refresh fallback when disconnected
+- [x] Pick errors auto-dismiss after 6 seconds
 
 ### 🧪 Manual Test Checkpoint — After Days 17–18
 *Real-time sync is the hardest piece. Test interactively with two browser windows, two accounts.*

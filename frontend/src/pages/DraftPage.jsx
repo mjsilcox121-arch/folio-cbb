@@ -27,6 +27,8 @@ export default function DraftPage() {
   const [lockSubmitting, setLockSubmitting] = useState(false);
   const [pickError, setPickError] = useState("");
   const [search, setSearch] = useState("");
+  const [realtimeStatus, setRealtimeStatus] = useState("connecting"); // 'connected' | 'connecting' | 'error'
+  const [redirectCountdown, setRedirectCountdown] = useState(null);
 
   // Teams at week 0 (draft day), sorted by adjEM desc
   const allTeams = useMemo(() => {
@@ -73,10 +75,34 @@ export default function DraftPage() {
         event: "INSERT", schema: "public", table: "draft_picks",
         filter: `market_id=eq.${market.id}`,
       }, () => loadDraft())
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED")     setRealtimeStatus("connected");
+        else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setRealtimeStatus("error");
+        else setRealtimeStatus("connecting");
+      });
 
     return () => { supabase.removeChannel(channel); };
   }, [market?.id, loadDraft]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-redirect all players to /market when draft finishes
+  useEffect(() => {
+    if (draftState?.status !== "complete") return;
+    setRedirectCountdown(4);
+    const iv = setInterval(() => {
+      setRedirectCountdown((n) => {
+        if (n <= 1) { clearInterval(iv); navigate("/market"); return null; }
+        return n - 1;
+      });
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [draftState?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-dismiss pick errors after 6 seconds
+  useEffect(() => {
+    if (!pickError) return;
+    const t = setTimeout(() => setPickError(""), 6000);
+    return () => clearTimeout(t);
+  }, [pickError]);
 
   // ── Derived data ───────────────────────────────────────────────────────────
   const draftOrder  = draftState?.draft_order  ?? [];
@@ -231,10 +257,10 @@ export default function DraftPage() {
                 <>
                   <span className="draft-banner-title">Draft complete!</span>
                   <span className="draft-banner-sub">
-                    All picks are in.{" "}
-                    <button className="log-link-btn" style={{ fontSize: 13 }} onClick={() => navigate("/market")}>
-                      Go to Market →
-                    </button>
+                    {redirectCountdown != null
+                      ? `Redirecting to Market in ${redirectCountdown}…`
+                      : <>All picks are in. <button className="log-link-btn" style={{ fontSize: 13 }} onClick={() => navigate("/market")}>Go to Market →</button></>
+                    }
                   </span>
                 </>
               ) : isMyTurn && !amLocked ? (
@@ -256,18 +282,30 @@ export default function DraftPage() {
                 </>
               )}
             </div>
-            {isDraftActive && !amLocked && !isDraftComplete && (
-              <div className="draft-banner-right">
-                <button
-                  className="draft-lock-btn"
-                  onClick={handleLockIn}
-                  disabled={lockSubmitting}
-                >
-                  {lockSubmitting ? "Locking in…" : "Lock In"}
-                </button>
-                <div className="draft-lock-hint">Done picking? Lock in to pass your remaining turns.</div>
+            <div className="draft-banner-right">
+              {/* Realtime connection status */}
+              <div className="draft-realtime-row">
+                <span className={`draft-realtime-dot draft-realtime-${realtimeStatus}`} />
+                <span className="draft-realtime-label">
+                  {realtimeStatus === "connected" ? "Live" : realtimeStatus === "error" ? "Disconnected" : "Connecting…"}
+                </span>
+                {realtimeStatus !== "connected" && (
+                  <button className="draft-realtime-refresh" onClick={() => loadDraft()}>Refresh</button>
+                )}
               </div>
-            )}
+              {isDraftActive && !amLocked && !isDraftComplete && (
+                <>
+                  <button
+                    className="draft-lock-btn"
+                    onClick={handleLockIn}
+                    disabled={lockSubmitting}
+                  >
+                    {lockSubmitting ? "Locking in…" : "Lock In"}
+                  </button>
+                  <div className="draft-lock-hint">Done picking? Lock in to pass your remaining turns.</div>
+                </>
+              )}
+            </div>
           </div>
 
           {pickError && (

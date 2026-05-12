@@ -474,6 +474,15 @@ tfoot .totals-row td { border-top: 2px solid #e8e4dc; background: #f7f5f0; paddi
 .draft-pick-chip { display: inline-block; background: #E8F1FA; border: 1px solid #A8C8F0; color: #185FA5; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 20px; font-family: 'Arial', sans-serif; }
 .draft-no-picks { font-size: 12px; color: #bbb; font-family: 'Arial', sans-serif; font-style: italic; }
 
+/* Realtime status indicator */
+.draft-realtime-row { display: flex; align-items: center; gap: 5px; margin-bottom: 8px; }
+.draft-realtime-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.draft-realtime-connected    { background: #1D9E75; box-shadow: 0 0 0 2px #EAF3DE; }
+.draft-realtime-connecting   { background: #C4960F; box-shadow: 0 0 0 2px #FAEEDA; }
+.draft-realtime-error        { background: #993C1D; box-shadow: 0 0 0 2px #FAECE7; }
+.draft-realtime-label { font-size: 11px; font-family: 'Arial', sans-serif; color: #888; }
+.draft-realtime-refresh { font-size: 11px; font-family: 'Arial', sans-serif; color: #185FA5; background: none; border: none; cursor: pointer; padding: 0; text-decoration: underline; }
+
 /* Responsive: collapse sidebar below the team list on narrow screens */
 @media (max-width: 720px) {
   .draft-layout { flex-direction: column; }

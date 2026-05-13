@@ -13,6 +13,26 @@
 --   4. Creates draft_picks table if missing
 -- ============================================================
 
+-- ── 0. Fix draft_status enum (if the column was created as an enum type) ─────
+-- Supabase sometimes infers a PG ENUM from CHECK constraints. If draft_state.status
+-- is typed as draft_status rather than text, we need to add any missing values.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'draft_status') THEN
+    BEGIN ALTER TYPE draft_status ADD VALUE 'waiting';  EXCEPTION WHEN duplicate_object THEN NULL; END;
+    BEGIN ALTER TYPE draft_status ADD VALUE 'active';   EXCEPTION WHEN duplicate_object THEN NULL; END;
+    BEGIN ALTER TYPE draft_status ADD VALUE 'complete'; EXCEPTION WHEN duplicate_object THEN NULL; END;
+  END IF;
+  -- Same guard for market_status in case day20 migration hasn't run yet
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'market_status') THEN
+    BEGIN ALTER TYPE market_status ADD VALUE 'draft';    EXCEPTION WHEN duplicate_object THEN NULL; END;
+    BEGIN ALTER TYPE market_status ADD VALUE 'waiting';  EXCEPTION WHEN duplicate_object THEN NULL; END;
+    BEGIN ALTER TYPE market_status ADD VALUE 'active';   EXCEPTION WHEN duplicate_object THEN NULL; END;
+    BEGIN ALTER TYPE market_status ADD VALUE 'complete'; EXCEPTION WHEN duplicate_object THEN NULL; END;
+  END IF;
+END $$;
+
+
 -- ── 1. Patch draft_state schema ──────────────────────────────────────────────
 -- day3 created draft_state with only: market_id, current_turn_user_id,
 -- draft_order, status. Day15 RPCs also need current_turn_index and locked_users.
@@ -22,12 +42,18 @@ ALTER TABLE public.draft_state
   ADD COLUMN IF NOT EXISTS locked_users       JSONB NOT NULL DEFAULT '[]',
   ADD COLUMN IF NOT EXISTS updated_at         TIMESTAMPTZ NOT NULL DEFAULT now();
 
--- day3 status check only allowed 'waiting'/'active'/'complete'; extend it.
--- PostgreSQL doesn't support ALTER CONSTRAINT, so drop and re-add.
-ALTER TABLE public.draft_state DROP CONSTRAINT IF EXISTS draft_state_status_check;
-ALTER TABLE public.draft_state
-  ADD CONSTRAINT draft_state_status_check
-  CHECK (status IN ('waiting', 'active', 'complete'));
+-- Only add the CHECK constraint if the column is plain text (not an enum).
+-- If it's an enum the values are already enforced by the type itself.
+DO $$
+BEGIN
+  IF (SELECT data_type FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'draft_state' AND column_name = 'status') = 'text' THEN
+    ALTER TABLE public.draft_state DROP CONSTRAINT IF EXISTS draft_state_status_check;
+    ALTER TABLE public.draft_state
+      ADD CONSTRAINT draft_state_status_check
+      CHECK (status IN ('waiting', 'active', 'complete'));
+  END IF;
+END $$;
 
 
 -- ── 2. draft_picks (create if missing) ───────────────────────────────────────

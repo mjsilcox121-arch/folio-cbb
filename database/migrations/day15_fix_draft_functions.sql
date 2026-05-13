@@ -1,21 +1,23 @@
 -- ============================================================
--- Day 15 Fix — Draft Functions & Schema Repair
+-- Day 15 Fix (v3) — Draft Functions matching live schema
 --
--- Run this if day15_draft_infrastructure.sql rolled back (or was
--- never applied). The original migration failed because draft_state
--- already existed from day3 with a different schema, causing the
--- whole transaction to roll back before the functions were created.
+-- The live draft_state table has different column names than the
+-- migration files assumed. Actual columns (from inspection):
+--   id, market_id, turn_order, current_turn_index, locked_user_ids,
+--   status (enum), started_at, completed_at
+-- Plus columns added by earlier fix runs:
+--   locked_users, updated_at, draft_order, current_turn_user_id
 --
--- This script:
---   1. Adds missing columns to draft_state (if not present)
---   2. Recreates draft_state / draft_picks RLS policies cleanly
---   3. Creates initialize_draft, submit_draft_pick, lock_in_draft
---   4. Creates draft_picks table if missing
+-- This version writes functions that use only the columns we know
+-- exist: draft_order, current_turn_index, current_turn_user_id,
+-- locked_users (all confirmed present). market_id is NOT the PK
+-- (id is), so ON CONFLICT (market_id) is replaced with an
+-- existence check + plain INSERT.
 -- ============================================================
 
--- ── 0. Fix draft_status enum (if the column was created as an enum type) ─────
--- Supabase sometimes infers a PG ENUM from CHECK constraints. If draft_state.status
--- is typed as draft_status rather than text, we need to add any missing values.
+
+-- ── 0. Fix enum types ─────────────────────────────────────────────────────────
+
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'draft_status') THEN
@@ -23,7 +25,6 @@ BEGIN
     BEGIN ALTER TYPE draft_status ADD VALUE 'active';   EXCEPTION WHEN duplicate_object THEN NULL; END;
     BEGIN ALTER TYPE draft_status ADD VALUE 'complete'; EXCEPTION WHEN duplicate_object THEN NULL; END;
   END IF;
-  -- Same guard for market_status in case day20 migration hasn't run yet
   IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'market_status') THEN
     BEGIN ALTER TYPE market_status ADD VALUE 'draft';    EXCEPTION WHEN duplicate_object THEN NULL; END;
     BEGIN ALTER TYPE market_status ADD VALUE 'waiting';  EXCEPTION WHEN duplicate_object THEN NULL; END;
@@ -33,9 +34,7 @@ BEGIN
 END $$;
 
 
--- ── 1. Patch draft_state schema ──────────────────────────────────────────────
--- day3 created draft_state with only: market_id, current_turn_user_id,
--- draft_order, status. Day15 RPCs also need current_turn_index and locked_users.
+-- ── 1. Ensure all required columns exist on draft_state ───────────────────────
 
 ALTER TABLE public.draft_state
   ADD COLUMN IF NOT EXISTS draft_order           JSONB       NOT NULL DEFAULT '[]',
@@ -44,21 +43,8 @@ ALTER TABLE public.draft_state
   ADD COLUMN IF NOT EXISTS locked_users          JSONB       NOT NULL DEFAULT '[]',
   ADD COLUMN IF NOT EXISTS updated_at            TIMESTAMPTZ NOT NULL DEFAULT now();
 
--- Only add the CHECK constraint if the column is plain text (not an enum).
--- If it's an enum the values are already enforced by the type itself.
-DO $$
-BEGIN
-  IF (SELECT data_type FROM information_schema.columns
-      WHERE table_schema = 'public' AND table_name = 'draft_state' AND column_name = 'status') = 'text' THEN
-    ALTER TABLE public.draft_state DROP CONSTRAINT IF EXISTS draft_state_status_check;
-    ALTER TABLE public.draft_state
-      ADD CONSTRAINT draft_state_status_check
-      CHECK (status IN ('waiting', 'active', 'complete'));
-  END IF;
-END $$;
 
-
--- ── 2. draft_picks (create if missing) ───────────────────────────────────────
+-- ── 2. draft_picks ────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS public.draft_picks (
   id              UUID          NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -85,7 +71,7 @@ CREATE POLICY "draft_picks: admin manages all"
   WITH CHECK (public.is_admin());
 
 
--- ── 3. draft_state RLS (clean re-create) ─────────────────────────────────────
+-- ── 3. draft_state RLS ────────────────────────────────────────────────────────
 
 ALTER TABLE public.draft_state ENABLE ROW LEVEL SECURITY;
 
@@ -120,7 +106,12 @@ BEGIN
     RAISE EXCEPTION 'not_authorized';
   END IF;
 
-  IF EXISTS (SELECT 1 FROM public.draft_state WHERE market_id = p_market_id AND status <> 'waiting') THEN
+  -- Treat any existing row that is not 'waiting' as already initialized
+  IF EXISTS (
+    SELECT 1 FROM public.draft_state
+    WHERE market_id = p_market_id
+      AND status::TEXT <> 'waiting'
+  ) THEN
     RAISE EXCEPTION 'draft_already_initialized';
   END IF;
 
@@ -135,18 +126,13 @@ BEGIN
 
   v_first := v_shuffled[1];
 
-  -- Upsert: day3 may have inserted a 'waiting' row already
+  -- Delete any stale 'waiting' placeholder row before inserting
+  DELETE FROM public.draft_state WHERE market_id = p_market_id;
+
   INSERT INTO public.draft_state
     (market_id, draft_order, current_turn_index, current_turn_user_id, locked_users, status)
   VALUES
-    (p_market_id, to_jsonb(v_shuffled), 0, v_first, '[]'::JSONB, 'active')
-  ON CONFLICT (market_id) DO UPDATE
-    SET draft_order            = to_jsonb(v_shuffled),
-        current_turn_index     = 0,
-        current_turn_user_id   = v_first,
-        locked_users           = '[]'::JSONB,
-        status                 = 'active',
-        updated_at             = now();
+    (p_market_id, to_jsonb(v_shuffled), 0, v_first, '[]'::JSONB, 'active');
 
   UPDATE public.markets SET status = 'draft' WHERE id = p_market_id;
 
@@ -194,7 +180,7 @@ BEGIN
   FOR UPDATE;
 
   IF NOT FOUND                                  THEN RAISE EXCEPTION 'draft_not_initialized'; END IF;
-  IF v_state.status = 'complete'                THEN RAISE EXCEPTION 'draft_complete';        END IF;
+  IF v_state.status::TEXT = 'complete'          THEN RAISE EXCEPTION 'draft_complete';        END IF;
   IF v_state.current_turn_user_id <> v_user_id THEN RAISE EXCEPTION 'not_your_turn';         END IF;
 
   SELECT COUNT(*) INTO v_drafted_count
@@ -301,8 +287,8 @@ BEGIN
   WHERE  market_id = p_market_id
   FOR UPDATE;
 
-  IF NOT FOUND                   THEN RAISE EXCEPTION 'draft_not_initialized'; END IF;
-  IF v_state.status = 'complete' THEN RAISE EXCEPTION 'draft_complete';        END IF;
+  IF NOT FOUND                        THEN RAISE EXCEPTION 'draft_not_initialized'; END IF;
+  IF v_state.status::TEXT = 'complete' THEN RAISE EXCEPTION 'draft_complete';        END IF;
 
   IF v_state.locked_users @> to_jsonb(v_user_id::TEXT) THEN
     RAISE EXCEPTION 'already_locked_in';
@@ -360,7 +346,6 @@ END;
 $$;
 
 -- ============================================================
--- Verify after running:
---   Database > Functions: initialize_draft, submit_draft_pick, lock_in_draft
---   Database > Tables > draft_state columns: current_turn_index, locked_users
+-- After running, verify in Database > Functions:
+--   initialize_draft, submit_draft_pick, lock_in_draft all present
 -- ============================================================

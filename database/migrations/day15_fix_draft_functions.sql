@@ -130,9 +130,9 @@ BEGIN
   DELETE FROM public.draft_state WHERE market_id = p_market_id;
 
   INSERT INTO public.draft_state
-    (market_id, draft_order, current_turn_index, current_turn_user_id, locked_users, status)
+    (market_id, draft_order, turn_order, current_turn_index, current_turn_user_id, locked_users, locked_user_ids, status)
   VALUES
-    (p_market_id, to_jsonb(v_shuffled), 0, v_first, '[]'::JSONB, 'active');
+    (p_market_id, to_jsonb(v_shuffled), to_jsonb(v_shuffled), 0, v_first, '[]'::JSONB, '[]'::JSONB, 'active');
 
   UPDATE public.markets SET status = 'draft' WHERE id = p_market_id;
 
@@ -261,6 +261,8 @@ END;
 $$;
 
 
+
+
 -- ── 6. lock_in_draft ──────────────────────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION public.lock_in_draft(p_market_id UUID)
@@ -329,12 +331,16 @@ BEGIN
 
   IF v_all_locked THEN
     UPDATE public.draft_state
-    SET    locked_users = v_locked_arr, status = 'complete', updated_at = now()
+    SET    locked_users     = v_locked_arr,
+           locked_user_ids  = v_locked_arr,
+           status           = 'complete',
+           updated_at       = now()
     WHERE  market_id = p_market_id;
     UPDATE public.markets SET status = 'active' WHERE id = p_market_id;
   ELSE
     UPDATE public.draft_state
     SET    locked_users         = v_locked_arr,
+           locked_user_ids      = v_locked_arr,
            current_turn_index   = v_next_index,
            current_turn_user_id = v_next_user_id,
            updated_at           = now()

@@ -38,9 +38,11 @@ END $$;
 -- draft_order, status. Day15 RPCs also need current_turn_index and locked_users.
 
 ALTER TABLE public.draft_state
-  ADD COLUMN IF NOT EXISTS current_turn_index INT  NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS locked_users       JSONB NOT NULL DEFAULT '[]',
-  ADD COLUMN IF NOT EXISTS updated_at         TIMESTAMPTZ NOT NULL DEFAULT now();
+  ADD COLUMN IF NOT EXISTS draft_order           JSONB       NOT NULL DEFAULT '[]',
+  ADD COLUMN IF NOT EXISTS current_turn_index    INT         NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS current_turn_user_id  UUID        REFERENCES auth.users(id),
+  ADD COLUMN IF NOT EXISTS locked_users          JSONB       NOT NULL DEFAULT '[]',
+  ADD COLUMN IF NOT EXISTS updated_at            TIMESTAMPTZ NOT NULL DEFAULT now();
 
 -- Only add the CHECK constraint if the column is plain text (not an enum).
 -- If it's an enum the values are already enforced by the type itself.

@@ -24,6 +24,7 @@ export default function DraftPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [pickSubmitting, setPickSubmitting] = useState(false);
+  const [pickQty, setPickQty] = useState({});  // { [teamName]: number }
   const [lockSubmitting, setLockSubmitting] = useState(false);
   const [pickError, setPickError] = useState("");
   const [search, setSearch] = useState("");
@@ -151,14 +152,16 @@ export default function DraftPage() {
   }, [allTeams, search]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
-  async function handlePick(team) {
+  async function handlePick(team, qty) {
     if (!market?.id || pickSubmitting || !isMyTurn || amLocked) return;
     const available = team.shares - (pickedCount[team.team] || 0);
     if (available <= 0) return;
+    const quantity = Math.min(qty || 1, available);
     setPickSubmitting(true);
     setPickError("");
     try {
-      await submitDraftPick(market.id, team.team, team.price, team.shares);
+      await submitDraftPick(market.id, team.team, team.price, team.shares, quantity);
+      setPickQty((s) => ({ ...s, [team.team]: 1 }));
       await loadDraft();
       refreshMarkets();
     } catch (err) {
@@ -266,7 +269,7 @@ export default function DraftPage() {
               ) : isMyTurn && !amLocked ? (
                 <>
                   <span className="draft-banner-title">It's your turn!</span>
-                  <span className="draft-banner-sub">Click a team below to make your pick.</span>
+                  <span className="draft-banner-sub">Select a team and quantity below, then click Buy.</span>
                 </>
               ) : amLocked ? (
                 <>
@@ -277,7 +280,7 @@ export default function DraftPage() {
                 <>
                   <span className="draft-banner-title">Waiting for {shortEmail(currentPlayerEmail())}…</span>
                   <span className="draft-banner-sub">
-                    {shortEmail(currentPlayerEmail())} is making their pick. Picks appear instantly.
+                    {shortEmail(currentPlayerEmail())} is buying. Updates appear instantly.
                   </span>
                 </>
               )}
@@ -356,6 +359,11 @@ export default function DraftPage() {
                       const myCash   = cashMap[user?.id] ?? 0;
                       const tooExp   = canPick && team.price > myCash;
 
+                      const maxQty = canPick && !tooExp
+                        ? Math.min(avail, Math.floor(myCash / team.price))
+                        : 1;
+                      const qty = Math.min(pickQty[team.team] ?? 1, maxQty);
+
                       return (
                         <tr
                           key={team.team}
@@ -376,13 +384,29 @@ export default function DraftPage() {
                           </td>
                           <td className="draft-action">
                             {canPick && !tooExp && (
-                              <button
-                                className="draft-pick-btn"
-                                onClick={() => handlePick(team)}
-                                disabled={pickSubmitting}
-                              >
-                                {pickSubmitting ? "…" : "Pick"}
-                              </button>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                {maxQty > 1 && (
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={maxQty}
+                                    value={qty}
+                                    onChange={(e) => {
+                                      const v = Math.max(1, Math.min(maxQty, Number(e.target.value) || 1));
+                                      setPickQty((s) => ({ ...s, [team.team]: v }));
+                                    }}
+                                    disabled={pickSubmitting}
+                                    style={{ width: 44, padding: "2px 4px", borderRadius: 4, border: "1px solid #d0c8bc", fontSize: 12, textAlign: "center" }}
+                                  />
+                                )}
+                                <button
+                                  className="draft-pick-btn"
+                                  onClick={() => handlePick(team, qty)}
+                                  disabled={pickSubmitting}
+                                >
+                                  {pickSubmitting ? "…" : "Buy"}
+                                </button>
+                              </div>
                             )}
                             {canPick && tooExp && (
                               <span className="draft-cant-afford">Can't afford</span>
@@ -428,9 +452,11 @@ export default function DraftPage() {
 
                       {picks.length > 0 ? (
                         <div className="draft-picks-list">
-                          {picks.map((p) => (
-                            <span key={p.id} className="draft-pick-chip">
-                              {p.team_id}
+                          {Object.entries(
+                            picks.reduce((acc, p) => { acc[p.team_id] = (acc[p.team_id] || 0) + 1; return acc; }, {})
+                          ).map(([teamId, count]) => (
+                            <span key={teamId} className="draft-pick-chip">
+                              {count > 1 ? `(${count}) ` : ""}{teamId}
                             </span>
                           ))}
                         </div>

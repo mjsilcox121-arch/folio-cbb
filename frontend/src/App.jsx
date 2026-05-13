@@ -712,6 +712,7 @@ function GameLayout() {
               conferences={conferences}
               maxAdjEM={maxAdjEM}
               tradePending={tradePending}
+              portfolioLocked={portfolioLocked}
               onSearch={setSearch}
               onConfFilter={setConfFilter}
               onSort={handleSort}

@@ -646,12 +646,13 @@ export async function getDraftPicks(marketId) {
 }
 
 /** Submit a draft pick. Enforced server-side: turn order, cash, share availability. */
-export async function submitDraftPick(marketId, teamId, pricePerShare, totalShares) {
+export async function submitDraftPick(marketId, teamId, pricePerShare, totalShares, quantity = 1) {
   const { data, error } = await supabase.rpc("submit_draft_pick", {
     p_market_id:       marketId,
     p_team_id:         teamId,
     p_price_per_share: pricePerShare,
     p_total_shares:    totalShares ?? 0,
+    p_quantity:        quantity,
   });
   if (error) throw draftError(error);
   return data;

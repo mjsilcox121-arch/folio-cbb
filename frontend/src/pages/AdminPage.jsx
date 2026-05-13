@@ -18,6 +18,8 @@ import {
   getIsAdmin,
   executeQueue,
   initializeDraft,
+  advanceMarketWeek,
+  unlockPortfolios,
 } from "../lib/supabase";
 
 // waiting → draft is handled exclusively by "Initialize Draft" (RPC).
@@ -86,6 +88,8 @@ export default function AdminPage() {
   const [execError, setExecError]           = useState({});
   const [draftLoading, setDraftLoading]     = useState({});
   const [draftError, setDraftError]         = useState({});
+  const [advWeekLoading, setAdvWeekLoading] = useState({});
+  const [advWeekError, setAdvWeekError]     = useState({});
   const [logoutError, setLogoutError]       = useState("");
 
   // ── Per-market settings state ─────────────────────────────────────────────
@@ -207,6 +211,28 @@ export default function AdminPage() {
       setDraftError((s) => ({ ...s, [market.id]: err.message }));
     } finally {
       setDraftLoading((s) => ({ ...s, [market.id]: false }));
+    }
+  }
+
+  async function handleAdvanceWeek(market) {
+    const currentWeek = market.current_week ?? 0;
+    const nextWeek = currentWeek + 1;
+    if (!window.confirm(
+      `Advance "${market.name}" to Week ${nextWeek}?\n\n` +
+      (currentWeek === 0
+        ? "This will open trading for all players (Week 1). Make sure the queue has been executed first."
+        : `This will advance from Week ${currentWeek} to Week ${nextWeek}. Make sure the queue has been executed first.`)
+    )) return;
+    setAdvWeekLoading((s) => ({ ...s, [market.id]: true }));
+    setAdvWeekError((s) => ({ ...s, [market.id]: "" }));
+    try {
+      await advanceMarketWeek(market.id, nextWeek);
+      if (currentWeek === 0) await unlockPortfolios(market.id);
+      await loadMarkets();
+    } catch (err) {
+      setAdvWeekError((s) => ({ ...s, [market.id]: err.message }));
+    } finally {
+      setAdvWeekLoading((s) => ({ ...s, [market.id]: false }));
     }
   }
 
@@ -467,10 +493,28 @@ export default function AdminPage() {
                   >
                     {execLoading[market.id] ? "Executing…" : "Execute Queue"}
                   </button>
+                  {market.status === "active" && (
+                    <button
+                      onClick={() => handleAdvanceWeek(market)}
+                      disabled={advWeekLoading[market.id]}
+                      style={{
+                        fontFamily: "Arial, sans-serif", fontSize: 13, fontWeight: 600,
+                        padding: "0 16px", height: 38, borderRadius: 7, cursor: advWeekLoading[market.id] ? "not-allowed" : "pointer",
+                        background: advWeekLoading[market.id] ? "#ccc" : "#3B6D11", color: "#fff", border: "none", whiteSpace: "nowrap",
+                      }}
+                    >
+                      {advWeekLoading[market.id] ? "Advancing…" : `Advance to Week ${(market.current_week ?? 0) + 1}`}
+                    </button>
+                  )}
                 </div>
                 {draftError[market.id] && (
                   <div style={{ marginTop: 8, fontSize: 12, color: "#993C1D", fontFamily: "Arial, sans-serif" }}>
                     {draftError[market.id]}
+                  </div>
+                )}
+                {advWeekError[market.id] && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: "#993C1D", fontFamily: "Arial, sans-serif" }}>
+                    {advWeekError[market.id]}
                   </div>
                 )}
                 {execResult[market.id] && (

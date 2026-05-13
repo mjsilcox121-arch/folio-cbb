@@ -5,10 +5,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { DIVIDEND_RULES } from "../seasons";
 import {
   createMarket,
   getAllMarkets,
   updateMarketStatus,
+  updateMarketSettings,
   generateInviteLink,
   addUserToMarketByEmail,
   getMarketMembers,
@@ -18,7 +20,9 @@ import {
   initializeDraft,
 } from "../lib/supabase";
 
-const STATUS_NEXT = { waiting: "draft", draft: "active", active: "complete" };
+// waiting → draft is handled exclusively by "Initialize Draft" (RPC).
+// Direct status advance is only used for draft → active → complete.
+const STATUS_NEXT = { draft: "active", active: "complete" };
 const STATUS_LABELS = { waiting: "Waiting", draft: "Draft", active: "Active", complete: "Complete" };
 const STATUS_COLORS = {
   waiting:  { bg: "#f0ece4", border: "#d8d0c4", color: "#666" },
@@ -40,12 +44,26 @@ function StatusPill({ status }) {
   );
 }
 
+function buildDefaultOverrides() {
+  return Object.fromEntries(DIVIDEND_RULES.map((r) => [r.key, r.value]));
+}
+const MIN_MULTIPLIER = 0.5;
+const MAX_MULTIPLIER = 3;
+
 export default function AdminPage() {
   const navigate = useNavigate();
-  const { user, signOut } = useAuth();
+  const { user, signOut, isAdmin: ctxIsAdmin, ticker, updateTicker } = useAuth();
 
+  // isAdmin is already in AuthContext; we keep a local null-as-loading state
+  // so the "Checking permissions…" message still shows on first render.
   const [isAdmin, setIsAdmin]     = useState(null);
   const [markets, setMarkets]     = useState([]);
+
+  // ── Ticker edit state ─────────────────────────────────────────────────────
+  const [tickerEdit, setTickerEdit]   = useState(false);
+  const [tickerInput, setTickerInput] = useState(ticker ?? "");
+  const [tickerSaving, setTickerSaving] = useState(false);
+  const [tickerError, setTickerError]   = useState("");
   const [loadingMarkets, setLoadingMarkets] = useState(true);
 
   const [newName, setNewName]       = useState("");
@@ -70,10 +88,22 @@ export default function AdminPage() {
   const [draftError, setDraftError]         = useState({});
   const [logoutError, setLogoutError]       = useState("");
 
+  // ── Per-market settings state ─────────────────────────────────────────────
+  const [settingsEdit, setSettingsEdit]     = useState({});  // { [marketId]: bool }
+  const [settingsData, setSettingsData]     = useState({});  // { [marketId]: { mult, overrides } }
+  const [settingsSaving, setSettingsSaving] = useState({});
+  const [settingsError, setSettingsError]   = useState({});
+
   useEffect(() => {
     if (!user) return;
-    getIsAdmin().then((result) => setIsAdmin(result)).catch(() => setIsAdmin(false));
-  }, [user]);
+    // Use the profile already loaded in AuthContext (ctxIsAdmin) to avoid an extra DB call,
+    // but fall back to the getIsAdmin() query for the permission gate.
+    if (ctxIsAdmin !== undefined && ctxIsAdmin !== null) {
+      setIsAdmin(ctxIsAdmin);
+    } else {
+      getIsAdmin().then((result) => setIsAdmin(result)).catch(() => setIsAdmin(false));
+    }
+  }, [user, ctxIsAdmin]);
 
   const loadMarkets = useCallback(async () => {
     setLoadingMarkets(true);
@@ -180,6 +210,47 @@ export default function AdminPage() {
     }
   }
 
+  async function handleSaveTicker() {
+    const val = tickerInput.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+    if (!val) { setTickerError("Ticker can't be empty."); return; }
+    setTickerSaving(true); setTickerError("");
+    try {
+      await updateTicker(val);
+      setTickerEdit(false);
+    } catch (err) {
+      setTickerError(err.message);
+    } finally {
+      setTickerSaving(false);
+    }
+  }
+
+  function openSettingsForMarket(market) {
+    const dbMult = market.dividend_multiplier ?? 1;
+    const dbOver = market.dividend_overrides ?? {};
+    const overrides = Object.keys(dbOver).length > 0 ? dbOver : buildDefaultOverrides();
+    setSettingsData((s) => ({ ...s, [market.id]: { mult: Number(dbMult), overrides } }));
+    setSettingsEdit((s) => ({ ...s, [market.id]: true }));
+  }
+
+  async function handleSaveSettings(marketId) {
+    const data = settingsData[marketId];
+    if (!data) return;
+    setSettingsSaving((s) => ({ ...s, [marketId]: true }));
+    setSettingsError((s) => ({ ...s, [marketId]: "" }));
+    try {
+      await updateMarketSettings(marketId, {
+        dividendMultiplier: data.mult,
+        dividendOverrides:  data.overrides,
+      });
+      setSettingsEdit((s) => ({ ...s, [marketId]: false }));
+      await loadMarkets();
+    } catch (err) {
+      setSettingsError((s) => ({ ...s, [marketId]: err.message }));
+    } finally {
+      setSettingsSaving((s) => ({ ...s, [marketId]: false }));
+    }
+  }
+
   async function handleLogout() {
     setLogoutError("");
     try { await signOut(); navigate("/login", { replace: true }); }
@@ -208,8 +279,37 @@ export default function AdminPage() {
   return (
     <div className="container">
       <div className="topbar">
-        <div className="topbar-left">
+        <div className="topbar-left" style={{ alignItems: "center", gap: 8 }}>
           <h1 className="app-title">Folio</h1>
+          {/* Ticker display / inline edit */}
+          {!tickerEdit ? (
+            <span
+              className="ticker-badge"
+              onClick={() => { setTickerInput(ticker ?? ""); setTickerEdit(true); setTickerError(""); }}
+              title="Click to edit your ticker"
+              style={{ cursor: "pointer" }}
+            >
+              {ticker ? `[${ticker}]` : "[Add ticker]"}
+            </span>
+          ) : (
+            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                autoFocus
+                maxLength={8}
+                value={tickerInput}
+                onChange={(e) => setTickerInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+                onKeyDown={(e) => { if (e.key === "Enter") handleSaveTicker(); if (e.key === "Escape") setTickerEdit(false); }}
+                style={{ ...inputStyle, width: 80, height: 28, fontSize: 12, padding: "0 8px", fontFamily: "monospace", letterSpacing: 1 }}
+                placeholder="e.g. MAXS"
+                disabled={tickerSaving}
+              />
+              <button onClick={handleSaveTicker} disabled={tickerSaving} style={{ ...primarySmallBtnStyle, height: 28, fontSize: 11 }}>
+                {tickerSaving ? "…" : "Save"}
+              </button>
+              <button onClick={() => setTickerEdit(false)} style={{ ...secondaryBtnStyle, height: 28, fontSize: 11 }}>Cancel</button>
+              {tickerError && <span style={{ fontSize: 11, color: "#993C1D", fontFamily: "Arial, sans-serif" }}>{tickerError}</span>}
+            </span>
+          )}
           <span className="week-badge">Admin</span>
         </div>
         <div className="topbar-right">
@@ -395,6 +495,95 @@ export default function AdminPage() {
                 <div style={{ marginTop: 6, fontSize: 11, color: "#aaa", fontFamily: "Arial, sans-serif" }}>
                   Execute Queue before Advance Week. Running twice is safe — second run processes 0 requests.
                 </div>
+              </div>
+
+              {/* Market settings */}
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ ...sectionLabel, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>Market settings</span>
+                  {!settingsEdit[market.id] && (
+                    <button onClick={() => openSettingsForMarket(market)} style={{ fontSize: 11, color: "#185FA5", background: "none", border: "none", cursor: "pointer", fontFamily: "Arial, sans-serif" }}>
+                      Edit
+                    </button>
+                  )}
+                </div>
+                {!settingsEdit[market.id] ? (
+                  <div style={{ fontSize: 12, color: "#888", fontFamily: "Arial, sans-serif" }}>
+                    Dividend multiplier: <strong style={{ color: "#0d1b2a" }}>×{Number(market.dividend_multiplier ?? 1).toFixed(2)}</strong>
+                    {" · "}
+                    Overrides: <strong style={{ color: "#0d1b2a" }}>
+                      {market.dividend_overrides && Object.keys(market.dividend_overrides).length > 0 ? "Custom" : "Defaults"}
+                    </strong>
+                  </div>
+                ) : (
+                  <div>
+                    {/* Multiplier */}
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={labelStyle}>
+                        Dividend multiplier <span style={{ color: "#854F0B", fontWeight: 700, marginLeft: 6 }}>×{(settingsData[market.id]?.mult ?? 1).toFixed(2)}</span>
+                      </label>
+                      <input type="range" min={MIN_MULTIPLIER} max={MAX_MULTIPLIER} step="0.05"
+                        value={settingsData[market.id]?.mult ?? 1}
+                        onChange={(e) => setSettingsData((s) => ({ ...s, [market.id]: { ...s[market.id], mult: Number(e.target.value) } }))}
+                        style={{ width: "100%", accentColor: "#854F0B" }}
+                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#aaa", fontFamily: "Arial, sans-serif" }}>
+                        <span>{MIN_MULTIPLIER}×</span><span>1×</span><span>{MAX_MULTIPLIER}×</span>
+                      </div>
+                    </div>
+                    {/* Dividend rule overrides */}
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ ...labelStyle, marginBottom: 6, display: "flex", justifyContent: "space-between" }}>
+                        <span>Dividend amounts</span>
+                        <button style={{ fontSize: 11, color: "#185FA5", background: "none", border: "none", cursor: "pointer", fontFamily: "Arial, sans-serif", fontWeight: 600 }}
+                          onClick={() => setSettingsData((s) => ({ ...s, [market.id]: { ...s[market.id], overrides: buildDefaultOverrides() } }))}>
+                          Reset to defaults
+                        </button>
+                      </div>
+                      <div style={{ maxHeight: 280, overflowY: "auto", border: "1px solid #e8e4dc", borderRadius: 6 }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, fontFamily: "Arial, sans-serif" }}>
+                          <thead>
+                            <tr style={{ background: "#f7f5f0" }}>
+                              <th style={{ padding: "6px 10px", textAlign: "left", color: "#888", fontWeight: 600 }}>Event</th>
+                              <th style={{ padding: "6px 10px", textAlign: "right", color: "#888", fontWeight: 600 }}>Default</th>
+                              <th style={{ padding: "6px 10px", textAlign: "right", color: "#888", fontWeight: 600 }}>Value</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {DIVIDEND_RULES.map((r) => {
+                              const cur = settingsData[market.id]?.overrides?.[r.key] ?? r.value;
+                              const isCustom = cur !== r.value;
+                              return (
+                                <tr key={r.key} style={{ borderTop: "1px solid #f0ece4", background: isCustom ? "#FAEEDA" : undefined }}>
+                                  <td style={{ padding: "5px 10px", color: "#0d1b2a" }}>{r.label}</td>
+                                  <td style={{ padding: "5px 10px", textAlign: "right", color: "#aaa" }}>${r.value}</td>
+                                  <td style={{ padding: "5px 10px", textAlign: "right" }}>
+                                    <input type="number" min="0" step="1" value={cur}
+                                      style={{ width: 64, padding: "2px 6px", fontSize: 12, border: "1px solid #ddd", borderRadius: 4, textAlign: "right", fontFamily: "Arial, sans-serif" }}
+                                      onChange={(e) => {
+                                        const n = Number(e.target.value);
+                                        if (Number.isFinite(n) && n >= 0)
+                                          setSettingsData((s) => ({ ...s, [market.id]: { ...s[market.id], overrides: { ...s[market.id].overrides, [r.key]: n } } }));
+                                      }}
+                                    />
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                    {/* Save / cancel */}
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <button onClick={() => handleSaveSettings(market.id)} disabled={settingsSaving[market.id]} style={primarySmallBtnStyle}>
+                        {settingsSaving[market.id] ? "Saving…" : "Save settings"}
+                      </button>
+                      <button onClick={() => setSettingsEdit((s) => ({ ...s, [market.id]: false }))} style={secondaryBtnStyle}>Cancel</button>
+                    </div>
+                    {settingsError[market.id] && <div style={errorStyle}>{settingsError[market.id]}</div>}
+                  </div>
+                )}
               </div>
 
               {/* Members */}

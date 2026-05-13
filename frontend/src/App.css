@@ -8,6 +8,7 @@ body { font-family: 'Georgia', serif; background: #f7f5f0; color: #1a1a1a; min-h
 .topbar-left  { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .app-title    { font-size: 26px; font-weight: 700; color: #0d1b2a; letter-spacing: -0.4px; }
 .week-badge   { font-size: 13px; background: #0d1b2a; color: #fff; padding: 3px 10px; border-radius: 20px; font-family: 'Arial', sans-serif; font-weight: 600; }
+.ticker-badge { font-size: 12px; font-family: 'Courier New', monospace; font-weight: 700; color: #854F0B; background: #FAEEDA; border: 1px solid #FAC775; padding: 2px 8px; border-radius: 6px; letter-spacing: 1px; user-select: none; }
 .topbar-right { display: flex; gap: 6px; flex-wrap: wrap; }
 .tab-btn { font-size: 14px; font-family: 'Arial', sans-serif; padding: 7px 16px; border-radius: 8px; border: 1px solid #ddd; background: #fff; color: #666; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 6px; }
 .tab-btn:hover  { border-color: #aaa; color: #0d1b2a; }

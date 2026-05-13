@@ -696,6 +696,21 @@ export async function getTransactionLog(marketId) {
 }
 
 /**
+ * Update dividend_multiplier and dividend_overrides for a market (admin only).
+ * dividendOverrides: full { rule_key: value } map — stored as-is in JSONB.
+ */
+export async function updateMarketSettings(marketId, { dividendMultiplier, dividendOverrides }) {
+  const { error } = await supabase
+    .from("markets")
+    .update({
+      dividend_multiplier: dividendMultiplier,
+      dividend_overrides:  dividendOverrides,
+    })
+    .eq("id", marketId);
+  if (error) throw new Error("[supabase] updateMarketSettings failed: " + error.message);
+}
+
+/**
  * Check whether the current user has is_admin = true in the profiles table.
  * Used by AdminPage to gate the admin UI (Day 8: fixes the old users-table query).
  */

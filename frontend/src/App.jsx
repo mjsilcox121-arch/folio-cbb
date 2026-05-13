@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import {
-  SEASONS,
   getSeason,
   DEFAULT_SEASON_ID,
   DIVIDEND_RULES,
@@ -16,7 +15,6 @@ import Leaderboard from "./components/Leaderboard";
 import QueuePanel from "./components/QueuePanel";
 import PortfolioView from "./components/PortfolioView";
 import TeamModal from "./components/TeamModal";
-import SettingsModal from "./components/SettingsModal";
 import LoginPage from "./pages/LoginPage";
 import LogPage from "./pages/LogPage";
 import DraftPage from "./pages/DraftPage";
@@ -41,8 +39,7 @@ import {
 } from "./lib/supabase";
 import "./App.css";
 
-const DEFAULT_BUDGET     = 100;
-const DEFAULT_MULTIPLIER = 1;
+const DEFAULT_BUDGET = 100;
 
 function buildDefaultOverrides() {
   return Object.fromEntries(DIVIDEND_RULES.map((r) => [r.key, r.value]));
@@ -53,16 +50,21 @@ function buildDefaultOverrides() {
 // UI state (search, sort, modals) remains local React state.
 function GameLayout() {
   const navigate = useNavigate();
-  const { user, signOut } = useAuth();
+  const { user, isAdmin, ticker, signOut } = useAuth();
   const { market, markets, setActiveMarketId, refresh: refreshMarkets } = useMarket();
 
-  // ── Settings (initialized from market on load) ─────────────────────────────
-  const [seasonId, setSeasonId]                     = useState(DEFAULT_SEASON_ID);
-  const [budget, setBudget]                         = useState(DEFAULT_BUDGET);
-  const [dividendMultiplier, setDividendMultiplier] = useState(DEFAULT_MULTIPLIER);
-  const [dividendOverrides, setDividendOverrides]   = useState(buildDefaultOverrides);
-  const [showSettings, setShowSettings]             = useState(false);
-  const [logoutError, setLogoutError]               = useState("");
+  // ── Settings — read from market row (admin-managed, market-specific) ─────────
+  const [seasonId, setSeasonId] = useState(DEFAULT_SEASON_ID);
+  const [logoutError, setLogoutError] = useState("");
+
+  // Dividend settings come from the active market row (set by admin in AdminPage).
+  // Fall back to defaults so the game works even before admin has touched the sliders.
+  const dividendMultiplier = market?.dividend_multiplier ?? 1;
+  const dividendOverrides  = useMemo(() => {
+    const dbOverrides = market?.dividend_overrides ?? {};
+    if (!dbOverrides || Object.keys(dbOverrides).length === 0) return buildDefaultOverrides();
+    return dbOverrides;
+  }, [market?.dividend_overrides]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const season = useMemo(() => getSeason(seasonId), [seasonId]);
   const { WEEKS, TEAM_HISTORY, SCHEDULES, EVENTS_BY_WEEK, label: seasonLabel } = season;
@@ -102,7 +104,7 @@ function GameLayout() {
 
   // ── Derived constants ──────────────────────────────────────────────────────
   const draftMode      = week === 0;
-  const startingBudget = market?.starting_budget ? Number(market.starting_budget) : budget;
+  const startingBudget = market?.starting_budget ? Number(market.starting_budget) : DEFAULT_BUDGET;
   const buyingPower    = cashBalance; // combined cash + dividends in one balance
 
   // ── Load portfolio from DB when market changes ─────────────────────────────
@@ -157,19 +159,14 @@ function GameLayout() {
     }
   }, []); // state setters are stable
 
-  // Sync settings and reload portfolio whenever the active market changes
+  // Reload portfolio whenever the active market changes
   useEffect(() => {
     if (!market?.id) return;
 
     if (market.season_id) setSeasonId(market.season_id);
     setWeek(market.current_week ?? 0);
-    if (market.dividend_multiplier != null) setDividendMultiplier(Number(market.dividend_multiplier));
-    if (market.dividend_overrides && Object.keys(market.dividend_overrides).length > 0) {
-      setDividendOverrides({ ...buildDefaultOverrides(), ...market.dividend_overrides });
-    }
-    const startBudget = market.starting_budget ? Number(market.starting_budget) : DEFAULT_BUDGET;
-    setBudget(startBudget);
 
+    const startBudget = market.starting_budget ? Number(market.starting_budget) : DEFAULT_BUDGET;
     loadPortfolioFromDB(market.id, startBudget);
     loadLeaderboardFromDB(market.id);
     loadQueueFromDB(market.id, market.current_week ?? 0);
@@ -550,6 +547,9 @@ function GameLayout() {
       <div className="topbar">
         <div className="topbar-left">
           <h1 className="app-title">Folio</h1>
+          {isAdmin && ticker && (
+            <span className="ticker-badge">[{ticker}]</span>
+          )}
           <span className="week-badge">{WEEKS[week]}</span>
           {draftMode && <span className="status-pill sample">Draft day</span>}
         </div>
@@ -560,8 +560,7 @@ function GameLayout() {
           </button>
           <button className="tab-btn" onClick={() => navigate("/log")}>Log</button>
           <button className="tab-btn" onClick={() => navigate("/draft")}>Draft</button>
-          <button className="tab-btn" onClick={() => navigate("/admin")}>Admin</button>
-          <button className="gear-btn" onClick={() => setShowSettings(true)} title="Settings" aria-label="Open settings">⚙</button>
+          {isAdmin && <button className="tab-btn" onClick={() => navigate("/admin")}>Admin</button>}
           <button
             className="tab-btn signout-btn"
             onClick={handleLogout}
@@ -658,11 +657,14 @@ function GameLayout() {
           ))}
         </div>
         <div className="week-actions">
-          {week < WEEKS.length - 1
-            ? <button className="advance-btn" onClick={advanceWeek} disabled={tradePending}>
-                {draftMode ? "Lock in picks & start season →" : `Advance to ${WEEKS[week + 1]} →`}
-              </button>
-            : <span className="season-end-label">Season complete \U0001F3C6</span>}
+          {week >= WEEKS.length - 1
+            ? <span className="season-end-label">Season complete 🏆</span>
+            : draftMode
+              ? <span className="status-pill sample" style={{ padding: "0.35rem 0.85rem" }}>Waiting for admin to start the season</span>
+              : <button className="advance-btn" onClick={advanceWeek} disabled={tradePending}>
+                  {`Advance to ${WEEKS[week + 1]} →`}
+                </button>
+          }
           <button
             className="reset-btn"
             onClick={handleRefreshPortfolio}
@@ -767,20 +769,6 @@ function GameLayout() {
         onClose={() => setSelectedTeam(null)}
       />
 
-      {showSettings && (
-        <SettingsModal
-          seasonId={seasonId}
-          budget={budget}
-          dividendMultiplier={dividendMultiplier}
-          dividendOverrides={dividendOverrides}
-          onChangeSeason={handleChangeSeason}
-          onChangeBudget={setBudget}
-          onChangeMultiplier={setDividendMultiplier}
-          onChangeOverride={(key, value) => setDividendOverrides((o) => ({ ...o, [key]: value }))}
-          onResetOverrides={() => setDividendOverrides(buildDefaultOverrides())}
-          onClose={() => setShowSettings(false)}
-        />
-      )}
     </div>
   );
 }

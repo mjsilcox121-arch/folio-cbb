@@ -697,6 +697,31 @@ export async function getTransactionLog(marketId) {
 }
 
 /**
+ * Admin-only: fetch all pending queue requests for every player in a market.
+ * Calls get_all_pending_queues SECURITY DEFINER RPC to bypass per-user RLS.
+ * Returns [{ id, userId, playerName, week, action, teamId, pricePerShare, createdAt }].
+ */
+export async function getAdminPendingQueues(marketId) {
+  const { data, error } = await supabase.rpc("get_all_pending_queues", {
+    p_market_id: marketId,
+  });
+  if (error) {
+    if (error.message?.trim() === "not_authorized") throw new Error("Admin access required.");
+    throw new Error("[supabase] getAdminPendingQueues: " + error.message);
+  }
+  return (data ?? []).map((r) => ({
+    id:            r.id,
+    userId:        r.user_id,
+    playerName:    r.player_name,
+    week:          r.week,
+    action:        r.action,
+    teamId:        r.team_id,
+    pricePerShare: Number(r.price_per_share),
+    createdAt:     r.created_at,
+  }));
+}
+
+/**
  * Update dividend_multiplier and dividend_overrides for a market (admin only).
  * dividendOverrides: full { rule_key: value } map — stored as-is in JSONB.
  */

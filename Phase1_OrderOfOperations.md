@@ -274,16 +274,21 @@
 
 ## 🔒 WEEK 6 — Admin, Security & Polish (Days 20–22)
 
-### Day 20 — Admin Panel
-- [ ] Build `/admin` page (protected: only accessible if `is_admin = true`)
-  - [ ] Create market (name, max players)
-  - [ ] Add/remove users from market
-  - [ ] Set market status (waiting → draft → active)
-  - [ ] Trigger draft start
-  - [ ] Execute Queue button
-  - [ ] Advance Week button
-  - [ ] View all queues (admin can see all player queues — note in rules if this is desired)
-- [ ] Settings (dividend multiplier, overrides) should only be accessible to admin
+### Day 20 — Admin Panel ✅ Completed May 14, 2026
+- [x] Build `/admin` page (protected: only accessible if `is_admin = true`)
+  - [x] Create market (name, max players)
+  - [x] Add/remove users from market
+  - [x] Set market status (waiting → draft → active)
+  - [x] Trigger draft start (Initialize Draft button)
+  - [x] Execute Queue button
+  - [x] Advance Week button (Week 0→1 also unlocks portfolios for trading)
+  - [x] View all queues (admin can see all pending player queues in active markets — admin-only, noted in UI)
+- [x] Settings (dividend multiplier, overrides) only accessible to admin (moved from SettingsModal to AdminPage under each market's Manage panel)
+- Notes:
+  - Ticker system added: admin has a unique 1–8 char alphanumeric ID displayed in topbar, editable inline
+  - Market settings are per-market (dividend_multiplier + dividend_overrides stored on markets table)
+  - Draft lock-in button removed; draft completes automatically when all players have locked
+  - SQL migrations: day20_ticker_and_settings.sql, day20_realtime_and_draft_quantity.sql, day20_admin_queue_view.sql
 
 ### Day 21 — Security Hardening
 - [ ] Audit all RLS policies — test as a non-admin user and confirm you cannot access other players' queues, other markets' data

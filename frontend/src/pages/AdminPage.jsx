@@ -20,6 +20,7 @@ import {
   initializeDraft,
   advanceMarketWeek,
   unlockPortfolios,
+  getAdminPendingQueues,
 } from "../lib/supabase";
 
 // waiting → draft is handled exclusively by "Initialize Draft" (RPC).
@@ -92,6 +93,11 @@ export default function AdminPage() {
   const [advWeekError, setAdvWeekError]     = useState({});
   const [logoutError, setLogoutError]       = useState("");
 
+  // ── Pending queues (admin-only view) ─────────────────────────────────────────
+  const [pendingQueues, setPendingQueues]         = useState({});  // { [marketId]: [] }
+  const [pendingQueuesLoading, setPendingQueuesLoading] = useState({});
+  const [pendingQueuesError, setPendingQueuesError]     = useState({});
+
   // ── Per-market settings state ─────────────────────────────────────────────
   const [settingsEdit, setSettingsEdit]     = useState({});  // { [marketId]: bool }
   const [settingsData, setSettingsData]     = useState({});  // { [marketId]: { mult, overrides } }
@@ -118,6 +124,19 @@ export default function AdminPage() {
 
   useEffect(() => { if (isAdmin) loadMarkets(); }, [isAdmin, loadMarkets]);
 
+  async function loadPendingQueues(marketId) {
+    setPendingQueuesLoading((s) => ({ ...s, [marketId]: true }));
+    setPendingQueuesError((s) => ({ ...s, [marketId]: "" }));
+    try {
+      const data = await getAdminPendingQueues(marketId);
+      setPendingQueues((s) => ({ ...s, [marketId]: data }));
+    } catch (err) {
+      setPendingQueuesError((s) => ({ ...s, [marketId]: err.message }));
+    } finally {
+      setPendingQueuesLoading((s) => ({ ...s, [marketId]: false }));
+    }
+  }
+
   async function loadMembers(marketId) {
     setLoadingMembers((s) => ({ ...s, [marketId]: true }));
     try {
@@ -128,10 +147,14 @@ export default function AdminPage() {
     finally { setLoadingMembers((s) => ({ ...s, [marketId]: false })); }
   }
 
-  function toggleExpand(marketId) {
+  function toggleExpand(market) {
+    const marketId = market.id;
     const nowOpen = !expanded[marketId];
     setExpanded((s) => ({ ...s, [marketId]: nowOpen }));
-    if (nowOpen && !members[marketId]) loadMembers(marketId);
+    if (nowOpen) {
+      if (!members[marketId]) loadMembers(marketId);
+      if (market.status === "active") loadPendingQueues(marketId);
+    }
   }
 
   async function handleCreate(e) {
@@ -409,7 +432,7 @@ export default function AdminPage() {
                 {statusLoading[market.id] ? "Updating…" : `→ ${STATUS_LABELS[STATUS_NEXT[market.status]]}`}
               </button>
             )}
-            <button onClick={() => toggleExpand(market.id)}
+            <button onClick={() => toggleExpand(market)}
               style={{ fontFamily: "Arial, sans-serif", fontSize: 12, color: "#185FA5", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
               {expanded[market.id] ? "Hide ▲" : "Manage ▾"}
             </button>
@@ -540,6 +563,68 @@ export default function AdminPage() {
                   Execute Queue before Advance Week. Running twice is safe — second run processes 0 requests.
                 </div>
               </div>
+
+              {/* Pending queues — only shown for active markets */}
+              {market.status === "active" && (
+                <div style={{ marginBottom: 18 }}>
+                  <div style={{ ...sectionLabel, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span>Pending queues</span>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span style={{ fontSize: 10, color: "#bbb", fontFamily: "Arial, sans-serif", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
+                        Admin-only view
+                      </span>
+                      <button onClick={() => loadPendingQueues(market.id)}
+                        style={{ fontSize: 11, color: "#185FA5", background: "none", border: "none", cursor: "pointer", fontFamily: "Arial, sans-serif" }}>
+                        Refresh
+                      </button>
+                    </div>
+                  </div>
+
+                  {pendingQueuesLoading[market.id] ? (
+                    <div style={{ color: "#aaa", fontSize: 13, fontFamily: "Arial, sans-serif" }}>Loading…</div>
+                  ) : pendingQueuesError[market.id] ? (
+                    <div style={{ color: "#993C1D", fontSize: 13, fontFamily: "Arial, sans-serif" }}>{pendingQueuesError[market.id]}</div>
+                  ) : !pendingQueues[market.id] || pendingQueues[market.id].length === 0 ? (
+                    <div style={{ color: "#aaa", fontSize: 13, fontFamily: "Arial, sans-serif" }}>No pending requests this week.</div>
+                  ) : (() => {
+                    // Group by player name
+                    const byPlayer = {};
+                    for (const r of pendingQueues[market.id]) {
+                      (byPlayer[r.playerName] ??= []).push(r);
+                    }
+                    return (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {Object.entries(byPlayer).map(([name, reqs]) => (
+                          <div key={name} style={{ background: "#f7f5f0", borderRadius: 6, padding: "8px 12px" }}>
+                            <div style={{ fontFamily: "Arial, sans-serif", fontSize: 12, fontWeight: 700, color: "#0d1b2a", marginBottom: 6 }}>
+                              {name}
+                              <span style={{ fontWeight: 400, color: "#aaa", marginLeft: 8 }}>
+                                Week {reqs[0].week} · {reqs.length} request{reqs.length !== 1 ? "s" : ""}
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                              {reqs.map((r) => (
+                                <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontFamily: "Arial, sans-serif" }}>
+                                  <span style={{
+                                    fontWeight: 700, fontSize: 10, padding: "1px 7px", borderRadius: 10,
+                                    background: r.action === "buy" ? "#EAF3DE" : "#FAECE7",
+                                    color:      r.action === "buy" ? "#3B6D11"  : "#993C1D",
+                                    border:     r.action === "buy" ? "1px solid #C0DD97" : "1px solid #F5C4B3",
+                                  }}>
+                                    {r.action === "buy" ? "Buy" : "Sell"}
+                                  </span>
+                                  <span style={{ flex: 1, color: "#0d1b2a" }}>{r.teamId}</span>
+                                  <span style={{ color: "#888" }}>${r.pricePerShare.toFixed(2)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
 
               {/* Market settings */}
               <div style={{ marginBottom: 18 }}>

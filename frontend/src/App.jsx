@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, Component } from "react";
 import {
   SEASONS,
   getSeason,
@@ -208,7 +208,7 @@ function GameRow({ game, showAdjEM = false }) {
       <span className={`game-result-badge ${isWin ? "win" : "loss"}`}>{game.result}</span>
       <span className="game-opponent">
         <span className="game-loc">{locLabel}</span> {game.opponent}
-        {showAdjEM && <span className="game-adjEM"> ({game.opponentAdjEM > 0 ? "+" : ""}{game.opponentAdjEM.toFixed(1)} AdjEM)</span>}
+        {showAdjEM && game.opponentAdjEM != null && <span className="game-adjEM"> ({game.opponentAdjEM > 0 ? "+" : ""}{game.opponentAdjEM.toFixed(1)} AdjEM)</span>}
       </span>
       <span className="game-score">{game.score || ""}</span>
     </div>
@@ -218,13 +218,14 @@ function GameRow({ game, showAdjEM = false }) {
 // ── Upcoming game row (no result) ─────────────────────────────────────────────
 function UpcomingGameRow({ game, weeks }) {
   const locLabel = game.location === "H" ? "vs" : game.location === "A" ? "@" : "vs";
-  const strength = game.opponentAdjEM >= 25 ? "elite" : game.opponentAdjEM >= 18 ? "strong" : game.opponentAdjEM >= 12 ? "mid" : "weak";
+  const adjEM = game.opponentAdjEM ?? 0;
+  const strength = adjEM >= 25 ? "elite" : adjEM >= 18 ? "strong" : adjEM >= 12 ? "mid" : "weak";
   return (
     <div className="game-row upcoming">
       <span className={`opp-strength ${strength}`}>{strength.toUpperCase()}</span>
       <span className="game-opponent">
         <span className="game-loc">{locLabel}</span> {game.opponent}
-        <span className="game-adjEM"> (+{game.opponentAdjEM.toFixed(1)} AdjEM)</span>
+        {game.opponentAdjEM != null && <span className="game-adjEM"> (+{adjEM.toFixed(1)} AdjEM)</span>}
       </span>
       <span className="game-week-label">{weeks?.[game.week - 1]?.split(" ")[0] ?? `W${game.week}`}</span>
     </div>
@@ -403,6 +404,38 @@ function ModalActions({ teamDetail, week, selectedTeam, portfolio, buyingPower, 
   );
 }
 
+// ── Error Boundary ────────────────────────────────────────────────────────────
+export class AppErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: "2rem", fontFamily: "monospace" }}>
+          <h2>Something went wrong.</h2>
+          <p>Please refresh the page to continue.</p>
+          <details style={{ marginTop: "1rem", opacity: 0.6 }}>
+            <summary>Error details</summary>
+            <pre style={{ whiteSpace: "pre-wrap" }}>{String(this.state.error)}</pre>
+          </details>
+          <button
+            onClick={() => window.location.reload()}
+            style={{ marginTop: "1rem", padding: "0.5rem 1.5rem", cursor: "pointer" }}
+          >
+            Refresh
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
   // ── Settings (persist across sessions via localStorage) ──────────────────
@@ -507,7 +540,7 @@ export default function App() {
     const newDivBank = Math.round((dividendBank + newDivTotal) * 100) / 100;
     setDividendBank(newDivBank);
     setTeamDividends(newTeamDivs);
-    setDividendLog((l) => [...newDivLogs.reverse(), ...l]);
+    setDividendLog((l) => [...[...newDivLogs].reverse(), ...l]);
     setPortfolioHistory((h) => [...h, Math.round((newHoldings + cash + newDivBank) * 100) / 100]);
     setWeek(nextWeek);
     setDraftMode(false);

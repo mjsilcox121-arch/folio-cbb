@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, Component } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import {
   getSeason,
@@ -426,7 +426,7 @@ function GameLayout() {
     // 4. Update local state
     setCashBalance(newCashBalance);
     setDividendsEarned(newDivsEarned);
-    setDividendLog((l) => [...uiDivLogs.reverse(), ...l]);
+    setDividendLog((l) => [...[...uiDivLogs].reverse(), ...l]);
     setPortfolioHistory((h) => [...h, newTotalValue]);
     setWeek(nextWeek);
   }
@@ -795,4 +795,35 @@ export default function App() {
       <Route path="/*" element={<ProtectedRoute><GameLayout /></ProtectedRoute>} />
     </Routes>
   );
+}
+
+export class AppErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: "2rem", fontFamily: "monospace" }}>
+          <h2>Something went wrong.</h2>
+          <p>Please refresh the page to continue.</p>
+          <details style={{ marginTop: "1rem", opacity: 0.6 }}>
+            <summary>Error details</summary>
+            <pre style={{ whiteSpace: "pre-wrap" }}>{String(this.state.error)}</pre>
+          </details>
+          <button
+            onClick={() => window.location.reload()}
+            style={{ marginTop: "1rem", padding: "0.5rem 1.5rem", cursor: "pointer" }}
+          >
+            Refresh
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }

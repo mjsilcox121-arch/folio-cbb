@@ -21,14 +21,15 @@ function GameRow({ game }) {
 
 // ── Upcoming game row ──────────────────────────────────────────────────────────
 function UpcomingGameRow({ game, weeks }) {
-  const locLabel = game.location === "H" ? "vs" : game.location === "A" ? "@" : "vs";
-  const strength = game.opponentAdjEM >= 25 ? "elite" : game.opponentAdjEM >= 18 ? "strong" : game.opponentAdjEM >= 12 ? "mid" : "weak";
+  const locLabel  = game.location === "H" ? "vs" : game.location === "A" ? "@" : "vs";
+  const adjEM     = game.opponentAdjEM ?? 0;
+  const strength  = adjEM >= 25 ? "elite" : adjEM >= 18 ? "strong" : adjEM >= 12 ? "mid" : "weak";
   return (
     <div className="game-row upcoming">
       <span className={`opp-strength ${strength}`}>{strength.toUpperCase()}</span>
       <span className="game-opponent">
         <span className="game-loc">{locLabel}</span> {game.opponent}
-        <span className="game-adjEM"> (+{game.opponentAdjEM.toFixed(1)} AdjEM)</span>
+        {game.opponentAdjEM != null && <span className="game-adjEM"> (+{adjEM.toFixed(1)} AdjEM)</span>}
       </span>
       <span className="game-week-label">{weeks?.[game.week - 1]?.split(" ")[0] ?? `W${game.week}`}</span>
     </div>

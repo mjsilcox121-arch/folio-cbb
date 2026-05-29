@@ -15,7 +15,7 @@ import {
 
 export default function DraftPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { market, refresh: refreshMarkets } = useMarket();
 
   const [draftState, setDraftState] = useState(null);
@@ -210,7 +210,7 @@ export default function DraftPage() {
           <button className="tab-btn" onClick={() => navigate("/market")}>Market</button>
           <button className="tab-btn" onClick={() => navigate("/log")}>Log</button>
           <button className="tab-btn active">Draft</button>
-          <button className="tab-btn" onClick={() => navigate("/admin")}>Admin</button>
+          {isAdmin && <button className="tab-btn" onClick={() => navigate("/admin")}>Admin</button>}
         </div>
       </div>
 
@@ -384,20 +384,23 @@ export default function DraftPage() {
                           </td>
                           <td className="draft-action">
                             {canPick && !tooExp && (
-                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                                 {maxQty > 1 && (
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    max={maxQty}
-                                    value={qty}
-                                    onChange={(e) => {
-                                      const v = Math.max(1, Math.min(maxQty, Number(e.target.value) || 1));
-                                      setPickQty((s) => ({ ...s, [team.team]: v }));
-                                    }}
-                                    disabled={pickSubmitting}
-                                    style={{ width: 44, padding: "2px 4px", borderRadius: 4, border: "1px solid #d0c8bc", fontSize: 12, textAlign: "center" }}
-                                  />
+                                  <div style={{ display: "flex", alignItems: "center", border: "1px solid #d0c8bc", borderRadius: 6, overflow: "hidden", flexShrink: 0 }}>
+                                    <button
+                                      onClick={() => setPickQty((s) => ({ ...s, [team.team]: Math.max(1, qty - 1) }))}
+                                      disabled={pickSubmitting || qty <= 1}
+                                      style={{ width: 22, height: 26, border: "none", background: "#f7f5f0", color: qty <= 1 ? "#ccc" : "#555", fontSize: 15, lineHeight: 1, cursor: qty <= 1 ? "default" : "pointer", padding: 0 }}
+                                    >−</button>
+                                    <span style={{ width: 26, textAlign: "center", fontSize: 12, fontWeight: 700, fontFamily: "Arial, sans-serif", color: "#0d1b2a", borderLeft: "1px solid #d0c8bc", borderRight: "1px solid #d0c8bc", lineHeight: "26px", display: "inline-block" }}>
+                                      {qty}
+                                    </span>
+                                    <button
+                                      onClick={() => setPickQty((s) => ({ ...s, [team.team]: Math.min(maxQty, qty + 1) }))}
+                                      disabled={pickSubmitting || qty >= maxQty}
+                                      style={{ width: 22, height: 26, border: "none", background: "#f7f5f0", color: qty >= maxQty ? "#ccc" : "#555", fontSize: 15, lineHeight: 1, cursor: qty >= maxQty ? "default" : "pointer", padding: 0 }}
+                                    >+</button>
+                                  </div>
                                 )}
                                 <button
                                   className="draft-pick-btn"

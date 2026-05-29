@@ -17,7 +17,7 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser]       = useState(null);
   const [loading, setLoading] = useState(true); // true until first session check resolves
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(null); // null = not yet loaded
   const [ticker, setTickerState] = useState(null);
 
   const loadProfile = useCallback(async (userId) => {

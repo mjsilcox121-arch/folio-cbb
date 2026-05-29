@@ -38,9 +38,11 @@ export default function LoginPage() {
           // Email confirm is OFF — user is logged in immediately
           navigate(from, { replace: true });
         } else {
-          // Email confirm is ON — prompt user to check inbox
-          setMessage("Account created! Check your email to confirm your address, then sign in.");
+          // Email confirm is ON — switch to sign-in tab with a success message
+          setEmail("");
+          setPassword("");
           setMode("login");
+          setMessage("Account created! Check your email to confirm your address, then sign in.");
         }
       }
     } catch (err) {

@@ -83,6 +83,7 @@ export default function AdminPage() {
   const [addEmail, setAddEmail]           = useState({});
   const [addError, setAddError]           = useState({});
   const [addLoading, setAddLoading]       = useState({});
+  const [addNotFound, setAddNotFound]     = useState({}); // { [marketId]: email } when user has no account
   const [statusLoading, setStatusLoading]   = useState({});
   const [execLoading, setExecLoading]       = useState({});
   const [execResult, setExecResult]         = useState({});
@@ -123,6 +124,11 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => { if (isAdmin) loadMarkets(); }, [isAdmin, loadMarkets]);
+
+  // Redirect non-admins away (only once isAdmin has finished loading — null means still loading)
+  useEffect(() => {
+    if (isAdmin === false) navigate("/market", { replace: true });
+  }, [isAdmin, navigate]);
 
   async function loadPendingQueues(marketId) {
     setPendingQueuesLoading((s) => ({ ...s, [marketId]: true }));
@@ -181,10 +187,17 @@ export default function AdminPage() {
     if (!email) { setAddError((s) => ({ ...s, [marketId]: "Enter an email address." })); return; }
     setAddLoading((s) => ({ ...s, [marketId]: true }));
     setAddError((s) => ({ ...s, [marketId]: "" }));
+    setAddNotFound((s) => ({ ...s, [marketId]: null }));
     try {
-      await addUserToMarketByEmail(marketId, email);
-      setAddEmail((s) => ({ ...s, [marketId]: "" }));
-      await loadMembers(marketId);
+      const result = await addUserToMarketByEmail(marketId, email);
+      if (!result.userFound) {
+        // No Folio account — auto-generate invite link so admin can share it
+        setAddNotFound((s) => ({ ...s, [marketId]: email }));
+        if (!inviteLink[marketId]) await handleGenerateInvite(marketId);
+      } else {
+        setAddEmail((s) => ({ ...s, [marketId]: "" }));
+        await loadMembers(marketId);
+      }
     } catch (err) { setAddError((s) => ({ ...s, [marketId]: err.message })); }
     finally { setAddLoading((s) => ({ ...s, [marketId]: false })); }
   }
@@ -306,24 +319,8 @@ export default function AdminPage() {
     catch { setLogoutError("Sign out failed."); }
   }
 
-  if (isAdmin === null) {
-    return <div className="container"><div style={{ padding: "3rem", textAlign: "center", color: "#aaa", fontFamily: "Arial, sans-serif" }}>Checking permissions…</div></div>;
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="container">
-        <div className="topbar">
-          <div className="topbar-left"><h1 className="app-title">Admin</h1></div>
-          <div className="topbar-right">
-            <button className="tab-btn" onClick={() => navigate("/market")}>Market</button>
-            <button className="tab-btn signout-btn" onClick={handleLogout}>Sign out</button>
-          </div>
-        </div>
-        <div style={{ padding: "3rem", textAlign: "center", color: "#993C1D", fontFamily: "Arial, sans-serif" }}>You do not have admin access.</div>
-      </div>
-    );
-  }
+  // Show nothing while loading — the redirect useEffect handles the non-admin case
+  if (!isAdmin) return null;
 
   return (
     <div className="container">
@@ -480,8 +477,27 @@ export default function AdminPage() {
                   </button>
                 </div>
                 {addError[market.id] && <div style={errorStyle}>{addError[market.id]}</div>}
+                {addNotFound[market.id] && inviteLink[market.id] && (
+                  <div style={{ marginTop: 10, padding: "10px 12px", background: "#FAEEDA", border: "1px solid #FAC775", borderRadius: 7 }}>
+                    <div style={{ fontSize: 12, color: "#854F0B", fontFamily: "Arial, sans-serif", marginBottom: 8 }}>
+                      No Folio account found for <strong>{addNotFound[market.id]}</strong>. Share the invite link below — they'll need to create an account first, then follow it to join the market.
+                    </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <input readOnly value={inviteLink[market.id]}
+                        style={{ ...inputStyle, flex: 1, minWidth: 180, background: "#fff8ee", color: "#444", cursor: "text", fontSize: 12 }}
+                        onFocus={(e) => e.target.select()} />
+                      <button onClick={() => navigator.clipboard.writeText(inviteLink[market.id]).catch(() => {})} style={secondaryBtnStyle}>Copy</button>
+                      <a
+                        href={`mailto:${addNotFound[market.id]}?subject=${encodeURIComponent("Join me on Folio CBB")}&body=${encodeURIComponent(`Hey,\n\nI'd like to invite you to play Folio CBB — a college basketball fantasy stock market game.\n\nFirst, create a free account at: ${window.location.origin}/login\n\nThen use this link to join the market:\n${inviteLink[market.id]}\n\nSee you on the leaderboard!`)}`}
+                        style={{ ...secondaryBtnStyle, textDecoration: "none", display: "inline-flex", alignItems: "center" }}
+                      >
+                        Send via email ↗
+                      </a>
+                    </div>
+                  </div>
+                )}
                 <div style={{ fontSize: 11, color: "#aaa", fontFamily: "Arial, sans-serif", marginTop: 5 }}>
-                  User must have a Folio account. Creates their market_members and portfolios rows.
+                  If they already have a Folio account this adds them directly. Otherwise you'll get a shareable invite link.
                 </div>
               </div>
 

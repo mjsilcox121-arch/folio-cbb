@@ -28,8 +28,7 @@ import {
   getDividendHistory,
   getPortfolioSnapshots,
   savePortfolioSnapshot,
-  saveDividendPayouts,
-  updateMemberFinancials,
+  applyDividends,
   advanceMarketWeek,
   unlockPortfolios,
   getLeaderboard,
@@ -409,8 +408,9 @@ function GameLayout() {
           unlockPortfolios(market.id),
         ];
         if (weekDivTotal > 0) {
-          dbWrites.push(saveDividendPayouts(market.id, nextWeek, dbDivRows));
-          dbWrites.push(updateMemberFinancials(market.id, newCashBalance, weekDivTotal));
+          // apply_dividends() RPC is admin-only and atomic: updates cash +
+          // dividends_earned + inserts payout rows in a single DB call.
+          dbWrites.push(applyDividends(market.id, user.id, weekDivTotal, nextWeek, dbDivRows));
         }
         await Promise.all(dbWrites);
         setPortfolioLocked(false); // portfolios unlock when week advances
@@ -661,9 +661,11 @@ function GameLayout() {
             ? <span className="season-end-label">Season complete 🏆</span>
             : draftMode
               ? <span className="status-pill sample" style={{ padding: "0.35rem 0.85rem" }}>Waiting for admin to start the season</span>
-              : <button className="advance-btn" onClick={advanceWeek} disabled={tradePending}>
-                  {`Advance to ${WEEKS[week + 1]} →`}
-                </button>
+              : isAdmin
+                ? <button className="advance-btn" onClick={advanceWeek} disabled={tradePending}>
+                    {`Advance to ${WEEKS[week + 1]} →`}
+                  </button>
+                : null
           }
           <button
             className="reset-btn"
